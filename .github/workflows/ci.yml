@@ -58,6 +58,9 @@ jobs:
         run: dotnet format tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj --verify-no-changes --no-restore
 
       - name: Run tests (Release)
+        env:
+          # TestScene 测试必须 headless 执行（osu.Framework 测试宿主）
+          OSU_EXECUTION_MODE: SingleThread
         run: dotnet test tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj -c Release --no-build --results-directory TestResults --logger "trx;LogFileName=results.trx"
 
       - name: Upload TRX test results

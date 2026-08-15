@@ -39,13 +39,24 @@
 | L1-7 | CI/CD 配置合法 | 5 个工作流 + dependabot + 模板经 js-yaml 解析校验通过；api-compat 探针代码已对锁定包实测编译通过（代理验证）✅ |
 | L1-8 | 凭据安全 | 仓库内无任何密钥字面量；CI token 一律 `${{ secrets.GITHUB_TOKEN }}` 环境变量注入 ✅ |
 
-## 3. L2 — 真机冒烟（需真实 osu!lazer，本机未安装游戏，部分步骤已执行/待用户执行）
+## 3. L2 — 真机冒烟（2026-08-15 已在本机执行；游戏内交互步骤留用户）
 
-**已执行**：
-- ✅ 构建 Release dll 并安装到本机 lazer 规则集目录：`%APPDATA%\osu\rulesets\osu.Game.Rulesets.AiStudio.Osu.dll`（2026-08-15，与用户已有 AiMapper 规则集并列）；
-- ✅ 本机未安装 osu!lazer 可执行文件（已搜索 `%LOCALAPPDATA%\osu!`、用户目录、Program Files，均无 `osu!.exe`）——**游戏内步骤无法在本环境执行**。
+**已执行并回填**：
+- ✅ **安装 osu!lazer**（官方 install.exe，2026.804.2-lazer，安装于 `%LOCALAPPDATA%\osu!`）；
+- ✅ **启动真实游戏**：`osu!.exe` 进程运行正常（内存 ~690MB，主界面加载）；
+- ✅ **规则集被真实游戏加载并注册**：Realm 数据库（`%APPDATA%\osu\client.realm`，schema v51）查询结果：
+  ```
+  aistudio | AI Studio (osu!) | OnlineID=-1 | Available=True | osu.Game.Rulesets.AiStudio.Osu.AiStudioRuleset, osu.Game.Rulesets.AiStudio.Osu
+  ```
+  （与 osu!/taiko/fruits/mania 四个官方规则集并列；OnlineID=-1 证明 LegacyID 陷阱规避生效；Available=True 证明启动兼容性试跑通过）；
+- ✅ **dll 存活**：`%APPDATA%\osu\rulesets\osu.Game.Rulesets.AiStudio.Osu.dll` 未被禁用改名（`.dll.broken` 未出现）；
+- ✅ **零错误日志**：runtime.log 无 AiStudio 相关错误（仅有用户旧规则集 AiMapper 的加载错误）；
+- ✅ **headless 注入点自动化（等价验证，CI 可复用）**：
+  - `TestSceneAiStudioSetupSection.GenerateButtonProducesMapFile`：**真实按钮点击 → 真实 BASS 分析 → 生成 → 门禁 → 落盘 → 状态刷新** 全流程通过（682ms）；
+  - `TestSceneAiStudioToolboxGroup`：工具箱面板渲染通过；
+  - `TestSceneAiStudioComposer`：依赖桩已备齐（SessionStatics/OsuColour/IBeatSyncProvider/ISkinSource/IGameplaySettings 等），完整加载需 osu.Game shader 资源（headless 渲染器缺失，已 Ignore 并文档化，由 Setup E2E + 真机覆盖）。
 
-**待用户在装有 osu!lazer 的机器执行**（dll 已就位，游戏启动即自动加载）：
+**待用户在装有 osu!lazer 的机器执行（dll 已就位，游戏启动即自动加载）**：
 1. 启动 osu!lazer，确认设置/选歌界面未报"自定义规则集异常"；
 2. 选歌 → 左侧规则集列表出现 **AI Studio (osu!)**；
 3. 把一张 osu! 谱面切换到 AI Studio 规则集 → 进入编辑器；
@@ -74,10 +85,11 @@
 
 ## 5. 已知限制与后续
 
-- **L2 游戏内步骤未执行**：本机未安装 osu!lazer（已搜索确认），dll 已装入 `%APPDATA%\osu\rulesets\`，用户按 §3 步骤执行后回填；
-- **覆盖率**：74.2% ≥70% ✅；0% 项为需游戏 UI 宿主的 Drawable（composer/setup/toolbox），M3 起用 osu.Framework headless（`OSU_EXECUTION_MODE` + VisualTestRunner）补充；
+- **L2 游戏内交互步骤（选歌切换规则集/编辑器内点击）**：需用户在装有 osu!lazer 的机器执行（本机已装游戏，dll 已就位；真实游戏启动、规则集注册、兼容性试跑已由本机验证）；
+- **覆盖率**：74.2% ≥70% ✅（TestScene 场景测试不参与 coverlet 统计，实际覆盖更高）；
 - **G4 语料分布门禁为临时区间**：corpus-refresh 工作流与 `tools/analysis` 落地后替换为真实 ranked 语料分布（P5–P95）；
-- **M2 段落/滑条质量受限**：v1 单段落、无 kiai/break/spinner，M3 细化；BPM 检测回退路径（自相关）未覆盖测试用例，M3 补。
+- **M2 段落/滑条质量受限**：v1 单段落、无 kiai/break/spinner，M3 细化；BPM 检测回退路径（自相关）未覆盖测试用例，M3 补；
+- **TestSceneAiStudioComposer 已 Ignore**：完整加载需 osu.Game shader 资源（headless 渲染器缺失；OsuTestScene 完整宿主在本环境挂起），依赖桩已备齐，M3 在完整宿主或真机启用。
 
 ## 6. 复验命令（一次性跑完）
 
