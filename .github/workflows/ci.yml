@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# 同一分支/PR 的新提交会取消仍在运行的旧 CI，节省 runner 时间
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # 仓库无 .sln，restore/build/format/test 均显式指定 csproj 路径
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys:
+            - nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: |
+          dotnet restore src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj
+          dotnet restore tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj
+
+      - name: Build plugin project (Release)
+        run: dotnet build src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj -c Release --no-restore
+
+      - name: Build test project (Release)
+        run: dotnet build tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj -c Release --no-restore
+
+      - name: Format check - plugin
+        run: dotnet format src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj --verify-no-changes --no-restore
+
+      - name: Format check - tests
+        run: dotnet format tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj --verify-no-changes --no-restore
+
+      - name: Run tests (Release)
+        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj -c Release --no-build --results-directory TestResults --logger "trx;LogFileName=results.trx"
+
+      - name: Upload TRX test results
+        if: always() # 测试失败也要保留结果文件
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults/results.trx
+          if-no-files-found: warn
+
+      # 将 dll 暂存到仓库根目录 bin/Release/net8.0 下，便于用统一相对路径上传（规避 Windows 反斜杠路径问题）
+      - name: Stage ruleset DLL
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p bin/Release/net8.0
+          cp src/osu.Game.Rulesets.AiStudio.Osu/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Osu.dll bin/Release/net8.0/
+
+      - name: Upload ruleset DLL artifact
+        if: runner.os == 'Linux' # 只在 Linux runner 上传一次，避免矩阵重复
+        uses: actions/upload-artifact@v4
+        with:
+          name: osu.Game.Rulesets.AiStudio.Osu.dll
+          path: bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Osu.dll

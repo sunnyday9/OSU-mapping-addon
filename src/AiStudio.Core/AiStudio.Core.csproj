@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>AiStudio.Core</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    AiStudio.Core 是"共享源码"核心：零外部依赖（纯 .NET 8）。
+    各 ruleset 程序集通过 <Compile Include> 把本项目的 .cs 编译进自身程序集，
+    因此用户 rulesets/ 目录下只有自包含的 ruleset dll，无额外依赖 dll。
+    本项目自身仅用于单元测试（Core.Tests）。
+  -->
+
+</Project>

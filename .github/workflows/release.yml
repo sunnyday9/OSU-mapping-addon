@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & publish ruleset release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # softprops/action-gh-release 创建 Release 需要该权限
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj
+
+      # github.ref_name 形如 v1.2.3，Version 属性需去掉 v 前缀（1.2.3）
+      - name: Build (Release)
+        run: dotnet build src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj -c Release --no-restore -p:Version=$(echo ${{ github.ref_name }} | sed 's/^v//')
+
+      - name: Create INSTALL.txt
+        run: |
+          cat > INSTALL.txt <<'EOF'
+          ============================================
+          osu! AI Studio (osu! mode) - ruleset 安装说明
+          ============================================
+          1. 解压本压缩包，得到 osu.Game.Rulesets.AiStudio.Osu.dll 与 INSTALL.txt。
+          2. 将 osu.Game.Rulesets.AiStudio.Osu.dll 放入 osu!lazer 用户目录下的 rulesets/ 文件夹：
+             - Windows: %APPDATA%\osu\rulesets\
+             - Linux:   ~/.local/share/osu/rulesets/
+             - macOS:   ~/Library/Application Support/osu/rulesets/
+          3. 重新启动 osu!lazer，ruleset 会被自动扫描并加载。
+          4. 在游戏内切换 ruleset 为 "osu! AI Studio" 即可游玩。
+
+          注意：请保持 dll 文件名不变（osu.Game.Rulesets.AiStudio.Osu.dll），
+          否则 osu!lazer 的 RulesetStore 无法识别加载。
+          EOF
+
+      # 先 cd 进输出目录再打包，保证 zip 内只有 dll + INSTALL.txt 两个文件
+      - name: Package ruleset zip
+        shell: bash
+        run: |
+          mkdir -p bin/Release/net8.0
+          cp src/osu.Game.Rulesets.AiStudio.Osu/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Osu.dll bin/Release/net8.0/
+          cp INSTALL.txt bin/Release/net8.0/
+          cd bin/Release/net8.0
+          zip -9 "$GITHUB_WORKSPACE/osu.Game.Rulesets.AiStudio.Osu-${{ github.ref_name }}.zip" osu.Game.Rulesets.AiStudio.Osu.dll INSTALL.txt
+
+      - name: Generate changelog (tag name + date)
+        run: |
+          {
+            echo "## Release ${{ github.ref_name }}"
+            echo ""
+            echo "发布日期：$(date -u +%Y-%m-%d)"
+            echo ""
+            echo "由 tag ${{ github.ref_name }} 触发的自动构建版本。"
+          } > CHANGELOG.md
+
+      - name: Publish draft release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: osu.Game.Rulesets.AiStudio.Osu-${{ github.ref_name }}.zip
+          draft: true
+          body_path: CHANGELOG.md

@@ -1,0 +1,13 @@
+# 代码所有者配置（占位）
+# 注意：请将下方所有 @osu-ai-studio-maintainers 替换为实际维护者的
+# GitHub 用户名或团队名（例如 @your-username 或 @your-org/maintainers）。
+# 占位符在 GitHub 上会显示为无法解析的 owner，需要发布前替换。
+#
+# 匹配规则：路径模式使用 glob 语法；同一路径被多条规则匹配时，
+# 以文件中靠后的规则为准。
+
+/src/AiStudio.Core/ @osu-ai-studio-maintainers
+/src/osu.Game.Rulesets.AiStudio.Osu/ @osu-ai-studio-maintainers
+/tests/ @osu-ai-studio-maintainers
+/docs/ @osu-ai-studio-maintainers
+/.github/ @osu-ai-studio-maintainers

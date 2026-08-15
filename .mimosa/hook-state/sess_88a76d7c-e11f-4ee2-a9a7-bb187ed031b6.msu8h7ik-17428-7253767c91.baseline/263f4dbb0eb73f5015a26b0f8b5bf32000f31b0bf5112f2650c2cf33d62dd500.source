@@ -1,0 +1,66 @@
+using osu.Game.Beatmaps.Formats;
+using osu.Game.Rulesets.Edit;
+using osu.Game.Rulesets.Edit.Checks.Components;
+using osu.Game.Skinning;
+
+namespace osu.Game.Rulesets.AiStudio.Osu.Checks;
+
+/// <summary>
+/// 检查谱面自定义 combo 颜色数量。
+///
+/// RC 条款：osu! RC "Overall > General > Rules"
+/// （https://osu.ppy.sh/wiki/en/Ranking_Criteria/osu ，2026-08 核对）：
+/// "Each beatmap must use at least two different custom combo colours unless the default skin is forced."
+///
+/// 实现说明：自 2026.730.0 起 Beatmap/BeatmapInfo 不再携带 ComboColours，谱面自定义颜色位于
+/// 谱面皮肤的 <see cref="SkinConfiguration"/>（实现 <see cref="IHasComboColours"/>，经
+/// <see cref="IWorkingBeatmap.Skin"/> 取得）：<c>CustomComboColours</c> 为空时
+/// <c>ComboColours</c> 返回 null（谱面皮肤禁用了默认色回退）——即"强制默认皮肤"，
+/// 按 RC 条款豁免；有自定义颜色时按去重后数量 &lt; 2 报 Problem（RC 要求"两个不同"的颜色）。
+/// 读取不到皮肤（如最小测试 WorkingBeatmap 返回 null）时跳过，不误报。
+/// </summary>
+public class CheckComboColourCount : ICheck
+{
+    private readonly IssueTemplateTooFewComboColours templateTooFewComboColours;
+
+    public CheckComboColourCount()
+    {
+        templateTooFewComboColours = new IssueTemplateTooFewComboColours(this);
+    }
+
+    public CheckMetadata Metadata { get; } = new CheckMetadata(CheckCategory.Resources, "Too few custom combo colours");
+
+    public IEnumerable<IssueTemplate> PossibleTemplates => new IssueTemplate[]
+    {
+        templateTooFewComboColours,
+    };
+
+    public IEnumerable<Issue> Run(BeatmapVerifierContext context)
+    {
+        if (context.Working.Skin is not Skin skin)
+            yield break;
+
+        if (skin.Configuration is not IHasComboColours comboColours)
+            yield break;
+
+        // 无自定义颜色 → 使用默认皮肤，RC 明确豁免（"unless the default skin is forced"）。
+        var colours = comboColours.ComboColours;
+        if (colours == null || colours.Count == 0)
+            yield break;
+
+        // RC 要求"两个不同"的自定义颜色，故去重后计数。
+        int distinctCount = colours.Distinct().Count();
+
+        if (distinctCount < 2)
+            yield return new Issue(templateTooFewComboColours, distinctCount);
+    }
+
+    public class IssueTemplateTooFewComboColours : IssueTemplate
+    {
+        public IssueTemplateTooFewComboColours(ICheck check)
+            : base(check, IssueType.Problem,
+                "This beatmap uses only {0} different custom combo colour(s); at least 2 different custom combo colours are required.")
+        {
+        }
+    }
+}

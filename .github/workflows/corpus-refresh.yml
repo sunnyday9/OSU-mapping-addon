@@ -1,0 +1,17 @@
+name: Corpus Refresh
+
+on:
+  schedule:
+    - cron: '0 4 1 * *' # 每月 1 日 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    name: Ranked corpus refresh (placeholder)
+    runs-on: ubuntu-latest
+    steps:
+      - name: M2 ranked corpus refresh placeholder
+        run: |
+          echo "== M2 里程碑：ranked 语料刷新（占位工作流） =="
+          echo "TODO: tools/analysis 落地后，在此接入真实采集流程，并自动创建 PR 更新语料。"
+          echo "当前仅作占位，不执行任何实际操作。"

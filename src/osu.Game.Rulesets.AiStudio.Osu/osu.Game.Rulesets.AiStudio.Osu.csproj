@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <RootNamespace>osu.Game.Rulesets.AiStudio.Osu</RootNamespace>
+    <!-- dll 名必须以 osu.Game.Rulesets. 开头才会被 osu!lazer 的 RulesetStore 扫描加载 -->
+    <AssemblyName>osu.Game.Rulesets.AiStudio.Osu</AssemblyName>
+    <AssemblyTitle>osu! AI Studio (osu! mode)</AssemblyTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 精确锁版：与目标 osu!lazer 版本对应（sentakki 同款实践），升级由 api-compat 工作流驱动 -->
+    <PackageReference Include="ppy.osu.Game" Version="2026.730.0" />
+    <PackageReference Include="ppy.osu.Game.Rulesets.Osu" Version="2026.730.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 共享核心以源码方式并入本程序集：rulesets 目录只部署这一个自包含 dll -->
+    <Compile Include="..\AiStudio.Core\**\*.cs" Exclude="..\AiStudio.Core\obj\**;..\AiStudio.Core\bin\**" LinkBase="AiStudio.Core" />
+  </ItemGroup>
+
+</Project>

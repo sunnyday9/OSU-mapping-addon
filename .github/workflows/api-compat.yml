@@ -1,0 +1,233 @@
+name: API Compatibility Probe
+
+# 目的：对抗 ppy 周级发版——用最新版 ppy.osu.Game / ppy.osu.Game.Rulesets.Osu
+# 编译一个探针项目，编译失败则自动开 Issue，驱动插件锁定版本升级决策。
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # 每周一 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Compile probe against latest ppy packages
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write # 需要创建 Issue 的权限
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Create probe project
+        run: |
+          dotnet new classlib -o probe -f net8.0
+          rm -f probe/Class1.cs
+
+      - name: Add latest ppy packages
+        run: |
+          dotnet add probe package ppy.osu.Game
+          dotnet add probe package ppy.osu.Game.Rulesets.Osu
+
+      # 注意 heredoc 使用 <<'EOF'（带引号），确保 $ 等字符不被 shell 展开
+      - name: Write probe source
+        shell: bash
+        run: |
+          cat > probe/Probe.cs <<'EOF'
+          using System;
+          using System.Collections.Generic;
+          using System.Linq;
+          using osu.Game.Beatmaps;
+          using osu.Game.Rulesets.Edit;
+          using osu.Game.Rulesets.Edit.Checks.Components;
+          using osu.Game.Rulesets.Mods;
+          using osu.Game.Rulesets.Osu;
+          using osu.Game.Rulesets.Osu.Difficulty;
+          using osu.Game.Rulesets.Osu.Edit;
+          using osu.Framework.Localisation;
+
+          namespace Probe
+          {
+              /// <summary>探针：仅用于编译期验证最新版 ppy API 面是否与插件锁定的 API 用法兼容。</summary>
+              public static class ApiProbe
+              {
+                  public static bool Run()
+                  {
+                      // 1. osu.Game.Rulesets.Osu：OsuRuleset
+                      var ruleset = new OsuRuleset();
+                      var rulesetInfo = ruleset.RulesetInfo;
+
+                      // 2. osu.Game.Rulesets.Osu.Difficulty：OsuDifficultyCalculator
+                      var difficultyCalculator = new OsuDifficultyCalculator(rulesetInfo, null);
+                      var attributes = difficultyCalculator.Calculate();
+
+                      // 3. osu.Game.Rulesets.Osu.Edit：OsuHitObjectComposer（基类 osu.Game.Rulesets.Edit.HitObjectComposer）
+                      var composer = new OsuHitObjectComposer(ruleset);
+                      HitObjectComposer baseComposer = composer;
+                      int hitObjectCount = baseComposer.HitObjects.Count();
+
+                      // 4. osu.Game.Rulesets.Edit：IBeatmapVerifier / BeatmapVerifierContext
+                      var verifier = new ProbeVerifier();
+                      var context = new BeatmapVerifierContext((IBeatmap)null, (IWorkingBeatmap)null, DifficultyRating.Easy);
+                      int issueCount = 0;
+                      foreach (Issue issue in verifier.Run(context))
+                      {
+                          issueCount++;
+                          Console.WriteLine(issue.ToString());
+                      }
+
+                      // 5. osu.Game.Rulesets.Edit.Checks.Components：ICheck / Issue / IssueTemplate
+                      var check = new ProbeCheck();
+                      ICheck asCheck = check;
+                      var probeIssue = new Issue(new IssueTemplate(check, IssueType.Error, "probe issue {0}"), "arg");
+                      foreach (IssueTemplate template in check.PossibleTemplates)
+                      {
+                          Issue created = new Issue(template, "arg");
+                          issueCount += created == null ? 0 : 1;
+                      }
+
+                      // 6. osu.Game.Rulesets.Mods：Mod / ModType
+                      Mod mod = new ProbeMod();
+                      ModType modType = mod.Type;
+
+                      // 7. osu.Game.Beatmaps：IBeatmap / IWorkingBeatmap
+                      bool beatmapOk = ProbeBeatmapRefs(null, null);
+
+                      return attributes != null
+                          && hitObjectCount >= 0
+                          && issueCount >= 0
+                          && asCheck != null
+                          && probeIssue != null
+                          && modType != ModType.Automation
+                          && beatmapOk;
+                  }
+
+                  private static bool ProbeBeatmapRefs(IBeatmap beatmap, IWorkingBeatmap working)
+                      => beatmap != null || working?.BeatmapInfo != null;
+
+                  private sealed class ProbeVerifier : IBeatmapVerifier
+                  {
+                      public IEnumerable<Issue> Run(BeatmapVerifierContext context)
+                      {
+                          yield return new Issue(new IssueTemplate(new ProbeCheck(), IssueType.Error, "probe {0}"), "arg");
+                      }
+                  }
+
+                  private sealed class ProbeCheck : ICheck
+                  {
+                      public CheckMetadata Metadata { get; } = new CheckMetadata(CheckCategory.Compose, "probe check", CheckScope.Difficulty);
+
+                      public IEnumerable<IssueTemplate> PossibleTemplates
+                      {
+                          get { yield return new IssueTemplate(this, IssueType.Error, "probe template: {0}"); }
+                      }
+
+                      public IEnumerable<Issue> Run(BeatmapVerifierContext context)
+                      {
+                          yield return new Issue(new IssueTemplate(this, IssueType.Error, "probe template: {0}"), "arg");
+                      }
+                  }
+
+                  private sealed class ProbeMod : Mod
+                  {
+                      public override string Name => "Probe";
+                      public override string Acronym => "PRB";
+                      public override ModType Type => ModType.Fun;
+                      public override LocalisableString Description => "Probe mod for API compatibility check.";
+                  }
+              }
+          }
+          EOF
+
+      - name: Build probe (Release)
+        id: probe-build
+        shell: bash
+        run: |
+          set +e
+          dotnet build probe -c Release > "$RUNNER_TEMP/probe-build.log" 2>&1
+          build_status=$?
+          set -e
+
+          # 截取构建错误行（缺失时回退到日志前 30 行）
+          grep -E "error|Build FAILED|CS[0-9]{4}|NU[0-9]{4}" "$RUNNER_TEMP/probe-build.log" | head -n 30 > "$RUNNER_TEMP/probe-error.txt" || true
+          if [ ! -s "$RUNNER_TEMP/probe-error.txt" ]; then
+            head -n 30 "$RUNNER_TEMP/probe-build.log" > "$RUNNER_TEMP/probe-error.txt"
+          fi
+
+          # 把编译输出写入环境变量（供后续 issue 步骤使用）
+          echo "build_status=$build_status" >> "$GITHUB_OUTPUT"
+          {
+            echo "PROBE_BUILD_LOG<<PROBE_BUILD_LOG_EOF"
+            cat "$RUNNER_TEMP/probe-error.txt"
+            echo "PROBE_BUILD_LOG_EOF"
+          } >> "$GITHUB_ENV"
+
+          exit "$build_status"
+
+      - name: Record probed package versions
+        id: probe-packages
+        if: always() # 构建失败时也需要记录版本信息
+        shell: bash
+        run: |
+          {
+            echo "PROBE_PACKAGES<<PROBE_PACKAGES_EOF"
+            dotnet list probe package || true
+            echo "PROBE_PACKAGES_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Probe succeeded against latest ppy packages
+        if: steps.probe-build.outcome == 'success'
+        run: |
+          echo "API probe 编译通过：最新版 ppy.osu.Game / ppy.osu.Game.Rulesets.Osu 与插件使用的 API 面兼容。"
+          echo "（本步仅为成功分支输出日志，不做其他操作）"
+
+      - name: Open issue on probe failure
+        if: failure() && steps.probe-build.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const buildLog = process.env.PROBE_BUILD_LOG || '(no build output captured)';
+            const pkgList = process.env.PROBE_PACKAGES || '(package list unavailable)';
+
+            // 避免重复开 issue：若已存在同标题的 open issue 则直接跳过
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            if (existing.some(i => i.title === '⚠️ API compatibility check failed')) {
+              console.log('An open issue with the same title already exists — skipping.');
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '⚠️ API compatibility check failed',
+              body: [
+                '## 触发方式',
+                '由 `api-compat.yml` 工作流自动触发（每周一 06:00 UTC 定时，或手动 workflow_dispatch）。',
+                '',
+                '## 探针引用的 ppy 包版本（dotnet list probe package 输出）',
+                '```',
+                pkgList,
+                '```',
+                '',
+                '## 构建错误（前 30 行）',
+                '```',
+                buildLog,
+                '```',
+                '',
+                '## 处理建议',
+                '1. 对比 `src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj` 中锁定的版本 `2026.730.0`。',
+                '2. 若 ppy 破坏性变更影响本插件，评估升级锁定版本并适配 API。',
+                '3. 修复后可在 Actions 中手动重新运行本工作流验证。'
+              ].join('\n')
+            });

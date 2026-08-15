@@ -1,0 +1,32 @@
+name: AI Tools Checks
+
+# 仅当 tools/analysis/ 下的文件变更时触发（目录尚不存在时不会触发，无需额外处理）
+on:
+  push:
+    paths:
+      - 'tools/analysis/**'
+  pull_request:
+    paths:
+      - 'tools/analysis/**'
+
+jobs:
+  lint-and-test:
+    name: Ruff lint & pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install ruff pytest
+
+      - name: Lint (ruff)
+        run: ruff check tools/analysis
+
+      - name: Test (pytest)
+        run: pytest tools/analysis
