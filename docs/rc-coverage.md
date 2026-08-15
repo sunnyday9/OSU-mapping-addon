@@ -1,6 +1,6 @@
 # Ranking Criteria 覆盖矩阵（RC Coverage）
 
-> 版本：v1 · 2026-08-15 · 对应 `docs/PLAN.md` §7 / `docs/requirements.md` FR-1.3 · 状态：M0 完成、M1 进行中
+> 版本：v2 · 2026-08-15 · 对应 `docs/PLAN.md` §7 / `docs/requirements.md` FR-1.3 · 状态：M0/M1/M2 完成（M2 生成管线 v1 已落地：BassAudioAnalyzer + OsuMapGenerator + QualityGateRunner）
 > 维护约定（PLAN §7"可追溯"）：每条检查注释引用 RC 条款编号；新增/修改检查时必须同步本矩阵，否则检查不得合入。
 
 ---
@@ -45,10 +45,10 @@
 
 | RC 分类 | 条款/规则摘要 | 是否客观可算 | 实现位置 | 状态 |
 |---|---|---|---|---|
-| osu! 模式 | **物件间隔/重叠**：物件不重叠、间距合理 | 是 | 合成器内建 RC 硬约束 ⏳ M2+（PLAN §6.3，约束内建于摆放求解器）；官方 osu 检查如覆盖则并列 | 待实现（M2+） |
+| osu! 模式 | **物件间隔/重叠**：物件不重叠、间距合理 | 是 | ✅ 已内建于 OsuMapGenerator 约束求解（PLAN §6.3）+ G1 门禁验证；官方 osu 检查并列 | 已实现（M2） |
 | osu! 模式 | **spinner 时长**：长度达标且不过长 | 是 | 官方 osu（`OsuBeatmapVerifier` 内置，`AiStudioBeatmapVerifier` 注释确认"spinner 长度已覆盖，不重复实现"） | 官方覆盖 |
 | osu! 模式 | **4:3 出屏**：物件不超出 4:3 屏幕边界（offscreen） | 是 | 官方 osu（`OsuBeatmapVerifier` 内置 offscreen 检查） | 官方覆盖 |
-| osu! 模式 | **SV 限制**：SV 取值/变化不极端（如 0.5–2.0 区间外需合理） | 部分 | ⏳ M2+ 自研增量（当前官方 Verify 未见专门 SV 检查，以锁定版源码为准） | 待实现（M2+） |
+| osu! 模式 | **SV 限制**：SV 取值/变化不极端（如 0.5–2.0 区间外需合理） | 部分 | ⏳ M3 自研增量（当前官方 Verify 未见专门 SV 检查，以锁定版源码为准） | 待实现（M3） |
 | osu! 模式 | **combo 颜色**：至少 2 个不同自定义颜色，除非强制默认皮肤 | 是 | 自研 M1 `CheckComboColourCount`（2026.730.0 起颜色移至谱面皮肤 `SkinConfiguration`，官方旧 `CheckComboColours` 已不可用） | **已实现** |
 
 ### 2.3 难度分级（difficulty levels 条款）
