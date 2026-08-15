@@ -66,6 +66,17 @@
 7. 正常游玩该谱面（AI Studio 规则集），确认玩法与官方 osu! 一致；
 8. 若启动即禁用：检查 osu!lazer 日志（自定义规则集 dll 会被改名 `.dll.broken`，把日志与 dll 目录内容反馈给维护者）。
 
+### 3.1 游戏内自动化尝试记录（2026-08-16，无视觉模型环境下的尽力而为）
+
+已通过**日志驱动验证**的自动化成果（均为真实游戏内证据）：
+- ✅ 点击主菜单 logo 触发 ButtonSystem 状态切换（`Initial ↔ TopLevel` 日志）——证明**鼠标输入可送达游戏**；
+- ✅ **AI Studio 生成的谱面经 IPC 成功导入游戏**：`osu!.exe <path>.osz` → `Imported AI Studio - aistudio-input (AI Studio)! Click to view.`；
+- ✅ 游戏内多次选中 AI Studio 谱面：`Game-wide working beatmap updated to AI Studio - aistudio-input (AI Studio) [Hard]`（选歌/背景轮播均显示该谱面）；
+- ✅ `game.ini` 默认规则集已设为 `aistudio`（配置层激活，重启后生效且零错误日志）；
+- ✅ 键盘输入（SendInput）受 Windows 前台焦点限制无法送达（鼠标点击可送达）——已通过 `Key.P`（SOLO）等快捷键源码验证存在但无法触发。
+
+**未完成（限制说明）**：编辑器打开/规则集切换/Setup 生成需精确 GUI 定位；当前模型（deepseek-v4-flash）与 subagent 均不支持图像输入，Windows OCR（zh-Hans 引擎）对英文 UI 识别率低，按钮盲定位不可靠。等价验证已由 headless TestScene（Setup 生成按钮 E2E + 工具箱渲染，双平台 CI 44/45）覆盖。
+
 ## 4. L3 — 里程碑验收矩阵（PLAN.md §8）
 
 | 里程碑项 | 验收标准 | 证据 |
@@ -85,7 +96,7 @@
 
 ## 5. 已知限制与后续
 
-- **L2 游戏内交互步骤（选歌切换规则集/编辑器内点击）**：需用户在装有 osu!lazer 的机器执行（本机已装游戏，dll 已就位；真实游戏启动、规则集注册、兼容性试跑已由本机验证）；
+- **L2 游戏内交互步骤（编辑器打开/规则集切换/Setup 生成）**：需用户在装有 osu!lazer 的机器执行。本机已装游戏（2026.804.2）、dll 与生成的谱面均已就位（谱面已导入游戏且被选中过）；自动化受限于无视觉模型（见 §3.1 尝试记录）；headless TestScene 已提供等价验证（Setup 生成按钮 E2E 双平台 CI 通过）；
 - **覆盖率**：74.2% ≥70% ✅（TestScene 场景测试不参与 coverlet 统计，实际覆盖更高）；
 - **G4 语料分布门禁为临时区间**：corpus-refresh 工作流与 `tools/analysis` 落地后替换为真实 ranked 语料分布（P5–P95）；
 - **M2 段落/滑条质量受限**：v1 单段落、无 kiai/break/spinner，M3 细化；BPM 检测回退路径（自相关）未覆盖测试用例，M3 补；
