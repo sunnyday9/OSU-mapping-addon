@@ -37,8 +37,8 @@ jobs:
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
-          restore-keys:
-            - nuget-${{ runner.os }}-
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
       - name: Restore
         run: |
