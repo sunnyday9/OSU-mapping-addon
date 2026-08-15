@@ -62,7 +62,7 @@ jobs:
 
       - name: Upload TRX test results
         if: always() # 测试失败也要保留结果文件
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.os }}
           path: TestResults/results.trx
@@ -78,7 +78,7 @@ jobs:
 
       - name: Upload ruleset DLL artifact
         if: runner.os == 'Linux' # 只在 Linux runner 上传一次，避免矩阵重复
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: osu.Game.Rulesets.AiStudio.Osu.dll
           path: bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Osu.dll
