@@ -12,6 +12,12 @@ public sealed class GenerationResult
     /// <summary>§3 质量门禁报告（Success=true 时必然全绿）。</summary>
     public QualityGateReport? QualityReport { get; init; }
 
+    /// <summary>导出的 .osu 文件路径（Success=true 时非空）。</summary>
+    public string? OutputFilePath { get; init; }
+
+    /// <summary>输出目录中的音频文件路径（拷贝失败时回退为原始输入路径）。</summary>
+    public string? AudioOutputPath { get; init; }
+
     public string? ErrorMessage { get; init; }
 }
 

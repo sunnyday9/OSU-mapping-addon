@@ -1,0 +1,18 @@
+# 统一 LF 行尾：避免 windows runner 上 git autocrlf 把文件转成 CRLF，
+# 导致 dotnet format（.editorconfig end_of_line = lf）误报 ENDOFLINE。
+* text=auto eol=lf
+
+*.cs text eol=lf
+*.csproj text eol=lf
+*.props text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.sln text eol=lf
+
+*.png binary
+*.dll binary
+*.pdb binary
+*.zip binary

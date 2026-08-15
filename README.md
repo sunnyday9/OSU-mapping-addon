@@ -44,8 +44,9 @@ docs/                                 需求/架构/RC 覆盖矩阵/验收清单
 | 里程碑 | 状态 | 说明 |
 |---|---|---|
 | M0 脚手架 | ✅ 完成 | 规则集可被游戏识别，三个编辑器注入点就位 |
-| M1 检查引擎 v1 | 🚧 进行中 | RC 客观规则 + Verify 页/侧栏 |
-| M2 生成 v1 | ⏳ | 音频分析 + Hard 预设生成 + SR 校准 |
-| M3–M7 | ⏳ | 多难度/导出 / mania / catch / taiko / 打磨 |
+| M1 检查引擎 v1 | ✅ 完成 | 4 条 RC 客观检查 + Verify 页/侧栏 + SuggestionEngine |
+| M2 生成 v1 | ✅ 完成 | BASS 音频分析（BPM/beat/onset/段落）+ 模板合成 + SR 校准闭环 + 五道门禁 + .osu 导出 + Setup 页生成 UI；38/38 测试、覆盖率 74.2% |
+| M3 生成 v2 | ⏳ | 多难度预设/spread、段落/kiai/break、滑条质量、建议系统 |
+| M4–M7 | ⏳ | mania / catch / taiko / 打磨 |
 
 详见 `docs/PLAN.md` 与 `docs/verification.md`。

@@ -17,6 +17,9 @@ public sealed class GenerationSettings
     /// <summary>输入音频文件路径。</summary>
     public string AudioPath { get; set; } = string.Empty;
 
+    /// <summary>输出目录；为空时使用默认目录（我的文档/osu-ai-studio-output）。</summary>
+    public string OutputDirectory { get; set; } = string.Empty;
+
     /// <summary>是否在合适位置插入 break 休息段。</summary>
     public bool IncludeBreakSections { get; set; } = true;
 }

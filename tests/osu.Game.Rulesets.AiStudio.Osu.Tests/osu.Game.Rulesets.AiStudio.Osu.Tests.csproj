@@ -4,12 +4,22 @@
     <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <RootNamespace>osu.Game.Rulesets.AiStudio.Osu.Tests</RootNamespace>
+    <!--
+      按平台固定 RID：让 osu.Framework.NativeLibs 的 BASS 原生库（bass.dll / libbass.so）
+      拷入测试输出目录（BASS 解码测试需要）。仅测试项目需要；插件在游戏内由 osu.Framework 加载原生库。
+    -->
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('Linux'))">linux-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="NUnit" Version="4.5.1" />
     <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+    <PackageReference Include="coverlet.collector" Version="10.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
