@@ -33,7 +33,7 @@ jobs:
 
       # 仓库无 .sln，restore/build/format/test 均显式指定 csproj 路径
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
