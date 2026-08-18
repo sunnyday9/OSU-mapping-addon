@@ -77,6 +77,8 @@
 
 **未完成（限制说明）**：编辑器打开/规则集切换/Setup 生成需精确 GUI 定位；当前模型（deepseek-v4-flash）与 subagent 均不支持图像输入，Windows OCR（zh-Hans 引擎）对英文 UI 识别率低，按钮盲定位不可靠。等价验证已由 headless TestScene（Setup 生成按钮 E2E + 工具箱渲染，双平台 CI 44/45）覆盖。
 
+**视觉通道尝试记录（2026-08-16）**：按用户建议尝试了多种 ZCode 内视觉方案——qwen-vision subagent 类型未注册（`~/.zcode/agents/` 不存在）；qwen-mm-plugins MCP 服务器配置存在但未连接（需重启 ZCode 客户端加载；其 `vision_chat` 需 DASHSCOPE_API_KEY，本机无）；ZCode 内置 provider（glm 等）的 API 需客户端会话鉴权，命令行不可达。**结论：本环境无可用视觉模型通道，游戏内 GUI 步骤无法自动化完成**——这是环境限制而非代码缺陷。
+
 ## 4. L3 — 里程碑验收矩阵（PLAN.md §8）
 
 | 里程碑项 | 验收标准 | 证据 |
