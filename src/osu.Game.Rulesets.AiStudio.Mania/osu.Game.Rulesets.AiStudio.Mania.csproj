@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <RootNamespace>osu.Game.Rulesets.AiStudio.Mania</RootNamespace>
+    <AssemblyName>osu.Game.Rulesets.AiStudio.Mania</AssemblyName>
+    <AssemblyTitle>osu! AI Studio (mania mode)</AssemblyTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ppy.osu.Game" Version="2026.730.0" />
+    <PackageReference Include="ppy.osu.Game.Rulesets.Mania" Version="2026.730.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\AiStudio.Core\**\*.cs" Exclude="..\AiStudio.Core\obj\**;..\AiStudio.Core\bin\**" LinkBase="AiStudio.Core" />
+  </ItemGroup>
+
+</Project>

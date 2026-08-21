@@ -191,7 +191,7 @@ public partial class TestSceneAiStudioComposer : TestScene
 
         public ISample GetSample(ISampleInfo sampleInfo) => null!;
 
-        public IBindable<TValue>? GetConfig<TLookup, TValue>(TLookup lookup) => null;
+        IBindable<TValue>? ISkin.GetConfig<TLookup, TValue>(TLookup lookup) => null;
 
         public ISkin FindProvider(Func<ISkin, bool> lookupFunction) => this;
 

@@ -1,5 +1,7 @@
 bin/
 obj/
+__pycache__/
+*.pyc
 *.user
 .vs/
 .idea/
@@ -9,3 +11,6 @@ TestResults/
 *.trx
 *.log
 .mimosa/
+tools/headless_*/bin/
+tools/headless_*/obj/
+.zcode/

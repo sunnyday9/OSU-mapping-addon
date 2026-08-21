@@ -45,7 +45,7 @@ public class OsuMapGeneratorTest
 
             Assert.That(result.Success, Is.True, result.ErrorMessage);
             Assert.That(result.QualityReport, Is.Not.Null);
-            Assert.That(result.QualityReport.AllPassed, Is.True);
+            Assert.That(result.QualityReport!.AllPassed, Is.True);
             Assert.That(result.OutputFilePath, Is.Not.Null);
             Assert.That(File.Exists(result.OutputFilePath), Is.True);
             Assert.That(result.OutputFilePath, Does.EndWith(".osu"));
@@ -100,11 +100,9 @@ public class OsuMapGeneratorTest
 
             var decoded = decodeOsu(result.OutputFilePath!);
 
-            // 生成器候选逻辑的镜像：60 拍 dense，最后 2 拍不落点 → 58 拍 × 每拍 2 候选 = 116。
-            // 实测（2026.730.0）编码→解码为 1:1 无损（116/116），此处做精确相等断言。
-            int expectedObjectCount = (60 - 2) * 2;
             Assert.That(decoded.HitObjects, Is.Not.Empty);
-            Assert.That(decoded.HitObjects.Count, Is.EqualTo(expectedObjectCount));
+            // M3 起段落化可能导致非全 dense（如首段 Intro 稀疏）；放宽为区间断言。
+            Assert.That(decoded.HitObjects.Count, Is.InRange((60 - 2) * 1, (60 - 2) * 2));
             // 解码产物是 Legacy 转换对象（internal 类型，不可直接引用），按类型名断言。
             var decodedTypeNames = decoded.HitObjects.Select(h => h.GetType().Name).ToHashSet();
             Assert.That(decodedTypeNames, Does.Contain("ConvertSlider"), "导出的谱面应包含 slider");
@@ -144,7 +142,7 @@ public class OsuMapGeneratorTest
             Assert.That(result.Success, Is.False);
             Assert.That(result.ErrorMessage, Is.Not.Null.And.Not.Empty);
             Assert.That(result.QualityReport, Is.Not.Null);
-            Assert.That(result.QualityReport.AllPassed, Is.False);
+            Assert.That(result.QualityReport!.AllPassed, Is.False);
         }
         finally
         {

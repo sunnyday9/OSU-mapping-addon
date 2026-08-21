@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <RootNamespace>osu.Game.Rulesets.AiStudio.Catch</RootNamespace>
+    <AssemblyName>osu.Game.Rulesets.AiStudio.Catch</AssemblyName>
+    <AssemblyTitle>osu! AI Studio (catch mode)</AssemblyTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ppy.osu.Game" Version="2026.730.0" />
+    <PackageReference Include="ppy.osu.Game.Rulesets.Catch" Version="2026.730.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\AiStudio.Core\**\*.cs" Exclude="..\AiStudio.Core\obj\**;..\AiStudio.Core\bin\**" LinkBase="AiStudio.Core" />
+  </ItemGroup>
+
+</Project>
