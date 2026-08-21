@@ -14,3 +14,4 @@ TestResults/
 tools/headless_*/bin/
 tools/headless_*/obj/
 .zcode/
+TestResultsMania/
