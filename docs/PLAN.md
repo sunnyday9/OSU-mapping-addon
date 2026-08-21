@@ -1,7 +1,7 @@
 # osu!lazer AI 制图辅助插件 — 项目计划（PLAN）
 
-> 版本：v3 · 2026-08-15 · 状态：待评审，未开始执行
-> 工作目录：`F:\zcode-harness\OSU-mapping-addon`（greenfield，空仓）
+> 版本：v4 · 2026-08-21 · 状态：M0–M6 已交付（M3 v2 多段/Spread/.osz/IDistributionProvider + M4/M5/M6 四模式独立插件） · 工作目录：feat/m3-m6-ai-studio-complete
+> 工作目录：`F:\zcode-harness\OSU-mapping-addon`
 > v3 变更：① CI/CD 全面适配 GitHub；② 生成与辅助产出的谱面统一以"ranked 级质量"为基准（不冲 rank，质量对齐）；③ 四模式（osu!/mania/taiko/catch）各有独立生成方式/模型，共享分析层 + 每模式专属合成器。
 
 ---
@@ -20,7 +20,8 @@
 **产出物形态**：插件生成/编辑的是**普通的标准 per-mode .osu 文件**（Mode=0/1/2/3），任何人在原版 osu!lazer/stable 中即可游玩，游玩不依赖本插件；插件只是"制图工作室"载体。
 
 **既定技术决策**（可评审推翻）：
-1. AI 管线 = C# 进程内 BASS_FX 分析 + 规则/模板合成（零新增原生依赖、离线可用；ONNX 神经网络增强为后续选项）；
+1. AI 管线 = C# 进程内 BASS 解码 + spectral-flux/块能量分析 + 规则/模板合成（零新增原生依赖、离线可用；ONNX 神经网络增强为后续选项；BASS_FX BPMDecodeGet 已验证不可靠并弃用，详见 §5.1 / `BassAudioAnalyzer`）；
+
 2. **CI/CD 全面适配 GitHub**：托管 GitHub，GitHub Actions 构建/测试/发布，GitHub Releases 分发；
 3. 开发顺序 = ranked 检查引擎先行（它是生成器的质量闸门，同时先验证编辑器注入点是否畅通）。
 
@@ -44,7 +45,7 @@
 | 调用官方难度/成绩计算 | ✅ | `new OsuDifficultyCalculator(RulesetInfo, workingBeatmap).Calculate(mods)`（public ctor、同步、内置 10s 超时、无内部缓存） |
 | 程序化导入/导出谱面 | ✅ | `BeatmapManager.Import/ExportLegacy`、`LegacyBeatmapEncoder`、`LegacyBeatmapExporter`（.osz） |
 | 注册自定义 mod | ✅ | override `GetModsFor`（自定义 mod 默认 `Ranked=false`） |
-| 音频解码与 DSP | ✅ | osu.Framework 自带 ppy.ManagedBass / .Fx（BASS_FX BPM/beat、FFT），插件零新增原生依赖 |
+| 音频解码与 DSP | ✅ | osu.Framework 自带 ppy.ManagedBass / .Fx（BASS 解码 + FFT；BASS_FX BPM/beat 已验证不可靠并弃用，改用 spectral-flux + 块能量精化，见 `BassAudioAnalyzer`），插件零新增原生依赖 |
 | 新增编辑器页签/替换 Editor 屏幕 | ❌ | Editor 硬编码 5 页签（SongSetup/Compose/Design/Timing/Verify），功能全部收纳进 Compose 面板 + Setup 分区 + Verify 检查 |
 | 追加官方通用 BeatmapVerifier 检查 | ❌ | 其 checks 列表为 private，只能以 ruleset verifier 身份并行运行 |
 | 自定义 ruleset 参与官方 ranked | ❌ | 服务端只认 4 个 legacy ruleset（与本项目"不冲 rank"定位一致） |
@@ -121,8 +122,7 @@ OSU-mapping-addon/
 ### 5.1 共享分析层（模式无关）
 
 - 解码：ppy.ManagedBass `BassFlags.Decode` 离线解码（osu.Framework 自带，零新增原生依赖、跨平台）；
-- 节拍：`BASS_FX_BPM_DecodeGet` 取 BPM，`BASS_FX_BPM_BeatDecodeGet` 取 beat 位置；
-- onset/能量：`Bass.ChannelGetData` FFT 算 spectral flux → onset 检测（阈值+最小间隔 pick），加能量包络/RMS/频带能量；
+- 节拍：曾尝试 `BASS_FX_BPM_DecodeGet` / `BASS_FX_BPM_BeatDecodeGet`，实测 `BPMDecodeGet` 对合成点击轨返回 0 且无错误码、不可靠，已**弃用该路径**；当前实现（`BassAudioAnalyzer`）改用 `Bass.ChannelGetData` FFT 的 **spectral-flux + 64 采样块能量精化（≈1.45ms 分辨率）** 自研节拍/onset 检测（阈值+最小间隔 pick、IOI 中位数求 BPM，回退自相关），加能量包络/RMS/频带能量；BASS_FX 仍作为曾尝试路径保留于文档以记录决策；
 - 段落：能量曲线 + 重复度估计切分 intro/verse/chorus/bridge/outro；
 - **增强选项（M7）**：ONNX Runtime（Microsoft.ML.OnnxRuntime，MIT）进程内跑 BeatNet CRNN（CC-BY-4.0，PyTorch 训练后 `torch.onnx` 导出）提升 beat/downbeat 精度，四个模式共享收益。
 

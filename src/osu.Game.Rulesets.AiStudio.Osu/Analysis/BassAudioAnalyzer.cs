@@ -4,13 +4,14 @@ using ManagedBass;
 namespace osu.Game.Rulesets.AiStudio.Osu.Analysis;
 
 /// <summary>
-/// 基于 BASS 解码 + 自研谱通量分析的音频分析器（M2 v1）。
+/// 基于 BASS 解码 + 自研谱通量分析的音频分析器（M2 v1，M3 分段扩展）。
 ///
 /// 背景：ppy fork 的 BASS_FX BPM 检测（BPMDecodeGet）实测不可用（对合成点击轨返回 0 且无错误码），
 /// 因此节拍/强度检测全部自研：用 <see cref="Bass.ChannelGetData"/> 的 FFT 输出计算谱通量包络，
 /// 峰值拾取得到 onset，间隔中位数（IOI）得到 BPM，onset 密度得到段落强度
 /// （与 MapsetVerifier 同思路；BPM 精度由 64 采样块能量子-hop 精化保证）。
 /// 解码通道全程只读、无输出设备（Bass.Init(0) 无声音设备模式），headless/CI 可用。
+/// M3：在谱通量基础上增加能量包络滑动窗口+z-score 的多段切分（2–5 段），每段带 KiaiCandidate 标记。
 /// </summary>
 public sealed class BassAudioAnalyzer : IAudioAnalyzer
 {
@@ -31,6 +32,10 @@ public sealed class BassAudioAnalyzer : IAudioAnalyzer
     /// <summary>段落强度归一化基准：每秒 3 个 onset 记为强度 1.0。</summary>
     private const double onset_rate_full_intensity = 3.0;
 
+    private const double min_section_seconds = 8.0;
+
+    private const double kiai_intensity_threshold = 0.7;
+
     private static readonly object init_lock = new object();
 
     private static bool bassInitialized;
@@ -41,9 +46,6 @@ public sealed class BassAudioAnalyzer : IAudioAnalyzer
     public Task<IReadOnlyList<AudioSection>> AnalyseSectionsAsync(string audioPath, CancellationToken cancellationToken = default)
         => Task.Run(() => analyseSections(audioPath, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// 一次性初始化 BASS（无声音设备模式）。osu.Framework 已初始化时忽略 Already 错误。
-    /// </summary>
     private static void ensureBassInitialized()
     {
         if (bassInitialized)
@@ -80,12 +82,8 @@ public sealed class BassAudioAnalyzer : IAudioAnalyzer
 
             var (flux, onsets) = computeFluxAndOnsets(handle, seconds, sampleRate);
 
-            // 子-hop 精化：FFT hop（≈23ms）会把 onset 时间量化到 ±11.6ms，进而污染 IOI/BPM。
-            // 重读 PCM，用 64 采样块能量（≈1.45ms 分辨率）在 onset 附近 ±23ms 找能量峰，
-            // 得到亚毫秒级 onset 时间（打击乐内容下能量峰即脉冲中心）。
             var refinedOnsets = refineOnsetTimes(handle, onsets, sampleRate);
 
-            // BPM：优先用精化 onset 间隔中位数（IOI，打击乐精确）；样本不足时回退谱通量自相关。
             double bpm;
             if (refinedOnsets.Count >= 4)
             {
@@ -115,7 +113,6 @@ public sealed class BassAudioAnalyzer : IAudioAnalyzer
 
             if (bpm <= 0 || !double.IsFinite(bpm))
             {
-                // 回退：谱通量包络自相关（滞后范围对应 45–230 BPM）。
                 int minLag = (int)Math.Ceiling(60.0 / max_bpm / hopSeconds);
                 int maxLag = (int)Math.Floor(60.0 / min_bpm / hopSeconds);
                 double bestCorrelation = -1;
@@ -141,7 +138,6 @@ public sealed class BassAudioAnalyzer : IAudioAnalyzer
                 bpm = 60.0 / (bestLag * hopSeconds);
             }
 
-            // 节拍序列：以精化后的第一个 onset 为相位起点，按检测 BPM 等间隔生成。
             double intervalSeconds = 60.0 / bpm;
             double phaseSeconds = refinedOnsets.Count > 0 ? refinedOnsets[0] : 0;
 
@@ -157,9 +153,6 @@ public sealed class BassAudioAnalyzer : IAudioAnalyzer
         }
     }
 
-    /// <summary>
-    /// 谱通量计算 + onset 峰值拾取（阈值 = 均值 + 1.0 标准差，最小间隔 60ms，含首尾边界）。
-    /// </summary>
     private static (List<double> Flux, List<double> Onsets) computeFluxAndOnsets(int handle, double seconds, int sampleRate)
     {
         double hopSeconds = (double)fft_size / sampleRate;
@@ -211,14 +204,10 @@ public sealed class BassAudioAnalyzer : IAudioAnalyzer
         return (flux, onsets);
     }
 
-    /// <summary>
-    /// 用 PCM 块能量对 onset 时间做子-hop 精化（消除 FFT hop 量化误差）。
-    /// </summary>
     private static List<double> refineOnsetTimes(int handle, List<double> onsets, int sampleRate)
     {
         const int block_size = 64;
 
-        // 解码流 seek 回起点，全轨重读 PCM，计算 64 采样块能量。
         Bass.ChannelSetPosition(handle, 0, PositionFlags.Bytes);
 
         var blockEnergy = new List<double>();
@@ -281,33 +270,137 @@ public sealed class BassAudioAnalyzer : IAudioAnalyzer
 
         int handle = Bass.CreateStream(audioPath, 0, 0, BassFlags.Decode | BassFlags.Float);
         if (handle == 0)
-            return new[] { new AudioSection(0, 0, 0.5) };
+            return new[] { new AudioSection(0, 0, 0.5, AudioSectionType.Verse, false, "Verse") };
 
         try
         {
             long lengthBytes = Bass.ChannelGetLength(handle, PositionFlags.Bytes);
             double seconds = Bass.ChannelBytes2Seconds(handle, lengthBytes);
             if (seconds <= 0)
-                return new[] { new AudioSection(0, 0, 0.5) };
+                return new[] { new AudioSection(0, 0, 0.5, AudioSectionType.Verse, false, "Verse") };
 
-            // v1：全曲单个段落，强度 = onset 密度归一化（打击乐点击轨能量低但节奏密度高，
-            // 用能量做强度会把密集节奏误判为稀疏——onset 密度更贴近"该放多密"的语义）。
             var (_, onsets) = computeFluxAndOnsets(handle, seconds, 44100);
 
-            double intensity = onsets.Count == 0
-                ? 0.5
-                : Math.Clamp(onsets.Count / seconds / onset_rate_full_intensity, 0, 1);
+            if (seconds < min_section_seconds * 2)
+            {
+                double intensity = onsets.Count == 0 ? 0.5 : Math.Clamp(onsets.Count / seconds / onset_rate_full_intensity, 0, 1);
+                bool kiai = intensity > kiai_intensity_threshold && seconds >= min_section_seconds;
+                return new[] { new AudioSection(0, seconds * 1000, intensity, AudioSectionType.Verse, kiai, "Verse") };
+            }
 
-            return new[] { new AudioSection(0, seconds * 1000, intensity) };
+            // 2s 滑动窗口 onset 密度 → z-score 峰检测 → 合并短段 → 2–5 段
+            const double windowSeconds = 2.0;
+            int windowCount = Math.Max(1, (int)(seconds / windowSeconds));
+            var windowDensities = new double[windowCount];
+            for (int w = 0; w < windowCount; w++)
+            {
+                double wStart = w * windowSeconds;
+                double wEnd = Math.Min(seconds, (w + 1) * windowSeconds);
+                int count = onsets.Count(o => o >= wStart && o < wEnd);
+                windowDensities[w] = count / (wEnd - wStart);
+            }
+
+            double mean = windowDensities.Average();
+            double std = Math.Sqrt(windowDensities.Average(v => (v - mean) * (v - mean)));
+            if (std < 1e-9) std = 1.0;
+
+            var boundaries = new List<int> { 0 };
+            for (int w = 1; w < windowCount - 1; w++)
+            {
+                double zPrev = (windowDensities[w - 1] - mean) / std;
+                double zCurr = (windowDensities[w] - mean) / std;
+                double zNext = (windowDensities[w + 1] - mean) / std;
+
+                bool isPeak = zCurr > 1.0 && zCurr > zPrev && zCurr > zNext;
+                bool isValley = zCurr < -0.8 && zCurr < zPrev && zCurr < zNext;
+
+                if (isPeak || isValley)
+                    boundaries.Add(w);
+            }
+            boundaries.Add(windowCount);
+
+            boundaries = boundaries.Distinct().OrderBy(b => b).ToList();
+
+            var merged = new List<(int Start, int End)>();
+            for (int i = 0; i < boundaries.Count - 1; i++)
+            {
+                int s = boundaries[i];
+                int e = boundaries[i + 1];
+                if (e - s == 0) continue;
+
+                if (merged.Count > 0 && (e - s) * windowSeconds < min_section_seconds)
+                {
+                    var last = merged[^1];
+                    merged[^1] = (last.Start, e);
+                }
+                else
+                {
+                    merged.Add((s, e));
+                }
+            }
+
+            if (merged.Count == 1 && seconds >= min_section_seconds * 2)
+            {
+                int mid = windowCount / 2;
+                if (mid > 0 && mid < windowCount)
+                    merged = new List<(int, int)> { (0, mid), (mid, windowCount) };
+            }
+
+            if (merged.Count > 5)
+                merged = merged.Take(5).ToList();
+
+            var sections = new List<AudioSection>();
+            for (int i = 0; i < merged.Count; i++)
+            {
+                double s = merged[i].Start * windowSeconds;
+                double e = Math.Min(seconds, merged[i].End * windowSeconds);
+                if (e - s < min_section_seconds && merged.Count > 1 && i == merged.Count - 1)
+                {
+                    if (sections.Count > 0)
+                    {
+                        var prev = sections[^1];
+                        sections[^1] = prev with { EndTime = e * 1000, KiaiCandidate = (prev.KiaiCandidate || prev.Intensity > kiai_intensity_threshold) && (e * 1000 - prev.StartTime) >= min_section_seconds * 1000 };
+                        continue;
+                    }
+                }
+
+                int count = onsets.Count(o => o >= s && o < e);
+                double dur = e - s;
+                double intensity = dur <= 0 ? 0.5 : Math.Clamp(count / dur / onset_rate_full_intensity, 0, 1);
+                bool kiai = intensity > kiai_intensity_threshold && dur >= min_section_seconds;
+
+                AudioSectionType type = assignSectionType(i, merged.Count, intensity);
+
+                sections.Add(new AudioSection(s * 1000, e * 1000, intensity, type, kiai, type.ToString()));
+            }
+
+            if (sections.Count == 0)
+            {
+                double intensity = onsets.Count == 0 ? 0.5 : Math.Clamp(onsets.Count / seconds / onset_rate_full_intensity, 0, 1);
+                bool kiai = intensity > kiai_intensity_threshold && seconds >= min_section_seconds;
+                return new[] { new AudioSection(0, seconds * 1000, intensity, AudioSectionType.Verse, kiai, "Verse") };
+            }
+
+            return sections;
         }
         catch (InvalidDataException)
         {
-            return new[] { new AudioSection(0, secondsFrom(handle) * 1000, 0.5) };
+            return new[] { new AudioSection(0, secondsFrom(handle) * 1000, 0.5, AudioSectionType.Verse, false, "Verse") };
         }
         finally
         {
             Bass.StreamFree(handle);
         }
+    }
+
+    private static AudioSectionType assignSectionType(int index, int total, double intensity)
+    {
+        if (total == 2)
+            return intensity > 0.55 ? AudioSectionType.Chorus : AudioSectionType.Verse;
+
+        if (index == 0) return AudioSectionType.Intro;
+        if (index == total - 1) return AudioSectionType.Outro;
+        return intensity > 0.6 ? AudioSectionType.Chorus : intensity > 0.4 ? AudioSectionType.Verse : AudioSectionType.Bridge;
     }
 
     private static double secondsFrom(int handle)

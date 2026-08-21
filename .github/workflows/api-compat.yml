@@ -1,6 +1,6 @@
 name: API Compatibility Probe
 
-# 目的：对抗 ppy 周级发版——用最新版 ppy.osu.Game / ppy.osu.Game.Rulesets.Osu
+# 目的：对抗 ppy 周级发版——用最新版 ppy.osu.Game / ppy.osu.Game.Rulesets.{Osu,Mania,Catch,Taiko}
 # 编译一个探针项目，编译失败则自动开 Issue，驱动插件锁定版本升级决策。
 
 on:
@@ -29,13 +29,16 @@ jobs:
           dotnet new classlib -o probe -f net8.0
           rm -f probe/Class1.cs
 
-      - name: Add latest ppy packages
+      - name: Add latest ppy packages (4 modes)
         run: |
           dotnet add probe package ppy.osu.Game
           dotnet add probe package ppy.osu.Game.Rulesets.Osu
+          dotnet add probe package ppy.osu.Game.Rulesets.Mania
+          dotnet add probe package ppy.osu.Game.Rulesets.Catch
+          dotnet add probe package ppy.osu.Game.Rulesets.Taiko
 
       # 注意 heredoc 使用 <<'EOF'（带引号），确保 $ 等字符不被 shell 展开
-      - name: Write probe source
+      - name: Write probe source (4 modes)
         shell: bash
         run: |
           cat > probe/Probe.cs <<'EOF'
@@ -43,35 +46,55 @@ jobs:
           using System.Collections.Generic;
           using System.Linq;
           using osu.Game.Beatmaps;
+          using osu.Game.Rulesets.Catch;
+          using osu.Game.Rulesets.Catch.Difficulty;
           using osu.Game.Rulesets.Edit;
           using osu.Game.Rulesets.Edit.Checks.Components;
+          using osu.Game.Rulesets.Mania;
+          using osu.Game.Rulesets.Mania.Difficulty;
           using osu.Game.Rulesets.Mods;
           using osu.Game.Rulesets.Osu;
           using osu.Game.Rulesets.Osu.Difficulty;
           using osu.Game.Rulesets.Osu.Edit;
+          using osu.Game.Rulesets.Taiko;
+          using osu.Game.Rulesets.Taiko.Difficulty;
           using osu.Framework.Localisation;
 
           namespace Probe
           {
-              /// <summary>探针：仅用于编译期验证最新版 ppy API 面是否与插件锁定的 API 用法兼容。</summary>
+              /// <summary>探针：仅用于编译期验证最新版 ppy API 面是否与插件锁定的 API 用法兼容（覆盖 4 模式）。</summary>
               public static class ApiProbe
               {
                   public static bool Run()
                   {
-                      // 1. osu.Game.Rulesets.Osu：OsuRuleset
-                      var ruleset = new OsuRuleset();
-                      var rulesetInfo = ruleset.RulesetInfo;
+                      // 1. osu! 标准：OsuRuleset + OsuDifficultyCalculator + OsuHitObjectComposer
+                      var osuRuleset = new OsuRuleset();
+                      var osuRulesetInfo = osuRuleset.RulesetInfo;
+                      var osuDiff = new OsuDifficultyCalculator(osuRulesetInfo, null);
+                      var osuAttrs = osuDiff.Calculate();
+                      var osuComposer = new OsuHitObjectComposer(osuRuleset);
+                      HitObjectComposer osuBaseComposer = osuComposer;
+                      int osuCount = osuBaseComposer.HitObjects.Count();
 
-                      // 2. osu.Game.Rulesets.Osu.Difficulty：OsuDifficultyCalculator
-                      var difficultyCalculator = new OsuDifficultyCalculator(rulesetInfo, null);
-                      var attributes = difficultyCalculator.Calculate();
+                      // 2. Mania：ManiaRuleset + ManiaDifficultyCalculator
+                      var maniaRuleset = new ManiaRuleset();
+                      var maniaInfo = maniaRuleset.RulesetInfo;
+                      var maniaDiff = new ManiaDifficultyCalculator(maniaInfo, null);
+                      var maniaAttrs = maniaDiff.Calculate();
 
-                      // 3. osu.Game.Rulesets.Osu.Edit：OsuHitObjectComposer（基类 osu.Game.Rulesets.Edit.HitObjectComposer）
-                      var composer = new OsuHitObjectComposer(ruleset);
-                      HitObjectComposer baseComposer = composer;
-                      int hitObjectCount = baseComposer.HitObjects.Count();
+                      // 3. Catch：CatchRuleset + CatchDifficultyCalculator
+                      var catchRuleset = new CatchRuleset();
+                      var catchInfo = catchRuleset.RulesetInfo;
+                      var catchDiff = new CatchDifficultyCalculator(catchInfo, null);
+                      var catchAttrs = catchDiff.Calculate();
 
-                      // 4. osu.Game.Rulesets.Edit：IBeatmapVerifier / BeatmapVerifierContext
+                      // 4. Taiko：TaikoRuleset + TaikoDifficultyCalculator
+                      var taikoRuleset = new TaikoRuleset();
+                      var taikoInfo = taikoRuleset.RulesetInfo;
+                      var taikoDiff = new TaikoDifficultyCalculator(taikoInfo, null);
+                      var taikoAttrs = taikoDiff.Calculate();
+
+                      // 5. osu.Game.Rulesets.Edit：IBeatmapVerifier / BeatmapVerifierContext
                       var verifier = new ProbeVerifier();
                       var context = new BeatmapVerifierContext((IBeatmap)null, (IWorkingBeatmap)null, DifficultyRating.Easy);
                       int issueCount = 0;
@@ -81,7 +104,7 @@ jobs:
                           Console.WriteLine(issue.ToString());
                       }
 
-                      // 5. osu.Game.Rulesets.Edit.Checks.Components：ICheck / Issue / IssueTemplate
+                      // 6. osu.Game.Rulesets.Edit.Checks.Components：ICheck / Issue / IssueTemplate
                       var check = new ProbeCheck();
                       ICheck asCheck = check;
                       var probeIssue = new Issue(new IssueTemplate(check, IssueType.Error, "probe issue {0}"), "arg");
@@ -91,15 +114,18 @@ jobs:
                           issueCount += created == null ? 0 : 1;
                       }
 
-                      // 6. osu.Game.Rulesets.Mods：Mod / ModType
+                      // 7. osu.Game.Rulesets.Mods：Mod / ModType
                       Mod mod = new ProbeMod();
                       ModType modType = mod.Type;
 
-                      // 7. osu.Game.Beatmaps：IBeatmap / IWorkingBeatmap
+                      // 8. osu.Game.Beatmaps：IBeatmap / IWorkingBeatmap
                       bool beatmapOk = ProbeBeatmapRefs(null, null);
 
-                      return attributes != null
-                          && hitObjectCount >= 0
+                      return osuAttrs != null
+                          && maniaAttrs != null
+                          && catchAttrs != null
+                          && taikoAttrs != null
+                          && osuCount >= 0
                           && issueCount >= 0
                           && asCheck != null
                           && probeIssue != null
@@ -183,7 +209,7 @@ jobs:
       - name: Probe succeeded against latest ppy packages
         if: steps.probe-build.outcome == 'success'
         run: |
-          echo "API probe 编译通过：最新版 ppy.osu.Game / ppy.osu.Game.Rulesets.Osu 与插件使用的 API 面兼容。"
+          echo "API probe 编译通过：最新版 ppy.osu.Game / ppy.osu.Game.Rulesets.{Osu,Mania,Catch,Taiko} 与插件使用的 API 面兼容。"
           echo "（本步仅为成功分支输出日志，不做其他操作）"
 
       - name: Open issue on probe failure
@@ -215,6 +241,9 @@ jobs:
                 '## 触发方式',
                 '由 `api-compat.yml` 工作流自动触发（每周一 06:00 UTC 定时，或手动 workflow_dispatch）。',
                 '',
+                '探针已扩展至 4 模式：ppy.osu.Game + ppy.osu.Game.Rulesets.{Osu,Mania,Catch,Taiko}',
+                '(ManiaRuleset/CatchRuleset/TaikoRuleset + 对应 DifficultyCalculator)。',
+                '',
                 '## 探针引用的 ppy 包版本（dotnet list probe package 输出）',
                 '```',
                 pkgList,
@@ -226,8 +255,8 @@ jobs:
                 '```',
                 '',
                 '## 处理建议',
-                '1. 对比 `src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj` 中锁定的版本 `2026.730.0`。',
-                '2. 若 ppy 破坏性变更影响本插件，评估升级锁定版本并适配 API。',
+                '1. 对比 `src/osu.Game.Rulesets.AiStudio.*/osu.Game.Rulesets.AiStudio.*.csproj` 中锁定的版本 `2026.730.0`。',
+                '2. 若 ppy 破坏性变更影响本插件，评估升级锁定版本并适配 API（重点：DifficultyCalculator 构造与 Ruleset API）。',
                 '3. 修复后可在 Actions 中手动重新运行本工作流验证。'
               ].join('\n')
             });

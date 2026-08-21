@@ -77,7 +77,7 @@ public partial class TestSceneAiStudioSetupSection : TestScene
 
         AddStep("设置音频路径", () => section.ChildrenOfType<OsuTextBox>().Single().Text = tempWavPath);
 
-        AddStep("点击生成按钮", () => section.ChildrenOfType<BasicButton>().Single().TriggerClick());
+        AddStep("点击生成按钮", () => section.ChildrenOfType<BasicButton>().First(b => b.Text.ToString().Contains("Hard 预设")).TriggerClick());
 
         // 输出文件名为音频名 + ".osu"（OsuMapGenerator 落盘逻辑）；等待生成完成且状态文本刷新。
         string expectedOsuPath = Path.Combine(defaultOutputDirectory, "clicktrack.osu");

@@ -12,18 +12,13 @@ namespace osu.Game.Rulesets.AiStudio.Osu.Edit;
 
 /// <summary>
 /// Setup 页的 "AI Studio" 分区（PLAN.md §2.2 注入点 2）。
-/// M2 起提供音频路径输入与一键生成入口（Hard 预设）。
+/// M2 提供 Hard 预设单文件生成；M3 增加 Generate Set（多难度 .osz）。
 /// </summary>
 public partial class AiStudioSetupSection : Container
 {
-    /// <summary>音频路径输入框。</summary>
     private readonly OsuTextBox audioPathTextBox;
-
-    /// <summary>生成按钮。注：2026.730.0 中 OsuButton 为抽象类，本版本亦无 TriangleButton，
-    /// 按 M2 规格回退说明改用框架 <see cref="BasicButton"/>。</summary>
     private readonly BasicButton generateButton;
-
-    /// <summary>生成状态/结果文本。</summary>
+    private readonly BasicButton generateSetButton;
     private readonly SpriteText statusText;
 
     public AiStudioSetupSection()
@@ -47,9 +42,17 @@ public partial class AiStudioSetupSection : Container
             Action = generate,
         };
 
+        generateSetButton = new BasicButton
+        {
+            Text = "生成集合（多难度 .osz）",
+            Width = 220,
+            Height = 40,
+            Action = generateSet,
+        };
+
         statusText = new SpriteText
         {
-            Text = "选择音频文件路径后点击生成。",
+            Text = "选择音频后点击生成（单文件或集合）。",
             Font = FontUsage.Default.With(size: 13),
         };
 
@@ -70,16 +73,13 @@ public partial class AiStudioSetupSection : Container
                     },
                     audioPathTextBox,
                     generateButton,
+                    generateSetButton,
                     statusText,
                 },
             },
         };
     }
 
-    /// <summary>
-    /// 一键生成（Hard 预设）：校验文件存在后在工作线程执行 <see cref="OsuMapGenerator"/>，
-    /// 完成/失败后经 <see cref="Scheduler"/> 回到更新线程刷新状态文本；生成期间禁用按钮。
-    /// </summary>
     private void generate()
     {
         string audioPath = audioPathTextBox.Text.Trim();
@@ -94,22 +94,63 @@ public partial class AiStudioSetupSection : Container
         {
             AudioPath = audioPath,
             TargetLevel = DifficultyLevel.Hard,
-            // Hard 区间（2.7–4.0★）中值；生成器按此目标做 SR 校准。
             TargetStarRating = 3.5,
         };
 
         generateButton.Enabled.Value = false;
+        generateSetButton.Enabled.Value = false;
         statusText.Text = "正在生成（Hard 预设）...";
 
-        // 在工作线程执行生成；完成/失败后经 Scheduler 回到更新线程刷新状态文本。
         Task.Run(() => new OsuMapGenerator().GenerateAsync(settings))
             .ContinueWith((Task<GenerationResult> task) => Scheduler.Add(() => finalizeGeneration(task)));
     }
 
-    /// <summary>在更新线程上展示生成结果并恢复按钮。</summary>
+    private void generateSet()
+    {
+        string audioPath = audioPathTextBox.Text.Trim();
+
+        if (string.IsNullOrEmpty(audioPath) || !File.Exists(audioPath))
+        {
+            statusText.Text = $"音频文件不存在：{audioPath}";
+            return;
+        }
+
+        var settings = new GenerationSettings
+        {
+            AudioPath = audioPath,
+            TargetLevel = DifficultyLevel.Hard,
+            TargetStarRating = 3.5,
+            Difficulties = SpreadPlanner.Plan(
+                new global::AiStudio.Core.Analysis.BeatGrid(120, 0, new List<double> { 0 }),
+                Array.Empty<global::AiStudio.Core.Analysis.AudioSection>(),
+                new GenerationSettings { AudioPath = audioPath }),
+        };
+
+        generateButton.Enabled.Value = false;
+        generateSetButton.Enabled.Value = false;
+        statusText.Text = "正在生成集合（多难度）...";
+
+        Task.Run(async () =>
+        {
+            var analyzer = new Analysis.BassAudioAnalyzer();
+            var grid = await analyzer.AnalyseBeatAsync(audioPath);
+            var sections = await analyzer.AnalyseSectionsAsync(audioPath);
+            var planned = SpreadPlanner.Plan(grid, sections, new GenerationSettings { AudioPath = audioPath, TargetStarRating = 3.5, StarRatingTolerance = 0.3 });
+            var setSettings = new GenerationSettings
+            {
+                AudioPath = audioPath,
+                TargetLevel = DifficultyLevel.Hard,
+                TargetStarRating = 3.5,
+                Difficulties = planned,
+            };
+            return await new OsuMapGenerator(analyzer).GenerateAsync(setSettings);
+        }).ContinueWith((Task<GenerationResult> task) => Scheduler.Add(() => finalizeGeneration(task)));
+    }
+
     private void finalizeGeneration(Task<GenerationResult> task)
     {
         generateButton.Enabled.Value = true;
+        generateSetButton.Enabled.Value = true;
 
         if (task.IsFaulted)
         {
