@@ -1,13 +1,17 @@
 name: AI Tools Checks
 
-# 仅当 tools/analysis/ 下的文件变更时触发（目录尚不存在时不会触发，无需额外处理）
+# tools/analysis/ 或 CI 工作流变更时触发。
+# 注意：.github/workflows/** 必须包含——仓库 ruleset 将 "Ruff lint & pytest" 设为 required status check，
+# dependabot 等只改 workflow 的 PR 若不触发本工作流会导致该检查缺失而无法合并。
 on:
   push:
     paths:
       - 'tools/analysis/**'
+      - '.github/workflows/**'
   pull_request:
     paths:
       - 'tools/analysis/**'
+      - '.github/workflows/**'
 
 jobs:
   lint-and-test:
