@@ -1,0 +1,170 @@
+{
+  "schema": "osu-ai-mapping-ir",
+  "version": "0.1.0",
+  "document_id": "mapir_mania4k_demo_001",
+  "map": {
+    "audio_hash": "sha256:demo",
+    "beatmap_id": null,
+    "difficulty_id": null,
+    "title": "Demo Song",
+    "artist": "Demo Artist",
+    "creator": "AI Mapper"
+  },
+  "ruleset": {
+    "ruleset": "mania",
+    "variant": {"keys": 4}
+  },
+  "difficulty_profile": {
+    "target_star_rating": 5.5,
+    "tolerance": 0.15,
+    "dimensions": {
+      "density": 0.72,
+      "rhythm_complexity": 0.64,
+      "reading": 0.55,
+      "stamina": 0.48,
+      "technicality": 0.42,
+      "movement": 0.20,
+      "ln_complexity": 0.30
+    },
+    "preferences": {
+      "allow_extreme_patterns": false,
+      "prefer_readability": true,
+      "prefer_music_sync": true,
+      "prefer_pattern_variety": true
+    }
+  },
+  "music_timeline": {
+    "duration_ms": 50000,
+    "tempo": {"base_bpm": 180, "changes": []},
+    "sections": [
+      {
+        "id": "section_chorus",
+        "start_time": 32000,
+        "end_time": 40000,
+        "type": "chorus",
+        "energy": 0.84,
+        "confidence": 0.91,
+        "labels": ["vocal-heavy", "high-energy"]
+      }
+    ],
+    "phrases": [
+      {
+        "id": "phrase_chorus_01",
+        "section_id": "section_chorus",
+        "start_time": 32000,
+        "end_time": 38000,
+        "type": "vocal_phrase",
+        "musical_role": "lead"
+      }
+    ],
+    "events": [
+      {
+        "id": "event_snare_32000",
+        "time": 32000,
+        "duration": 0,
+        "type": "snare",
+        "phrase_id": "phrase_chorus_01",
+        "strength": 0.86,
+        "features": {"energy": 0.78},
+        "confidence": 0.94,
+        "source": "audio_analyzer"
+      },
+      {
+        "id": "event_vocal_32500",
+        "time": 32500,
+        "duration": 500,
+        "type": "vocal_phrase",
+        "phrase_id": "phrase_chorus_01",
+        "strength": 0.82,
+        "features": {"pitch_contour": "ascending"},
+        "confidence": 0.88,
+        "source": "audio_analyzer"
+      }
+    ]
+  },
+  "mapping_plan": {
+    "intents": [
+      {
+        "id": "intent_chorus_climax",
+        "start_time": 32000,
+        "end_time": 38000,
+        "primary": "climax",
+        "secondary": ["rhythm_emphasis", "increase_density"],
+        "musical_targets": ["vocal_phrase", "snare"],
+        "continuity": {"relation": "continue", "reference": null},
+        "emphasis": {
+          "rhythm": 0.92,
+          "density": 0.82,
+          "movement": 0.25,
+          "pattern_complexity": 0.70,
+          "accent": 0.84,
+          "contrast": 0.68
+        },
+        "complexity": 0.76,
+        "confidence": 0.88,
+        "rationale": "High-energy chorus with strong snare and ascending vocal phrase warrants a denser rhythmic climax."
+      }
+    ],
+    "patterns": [
+      {
+        "id": "pattern_chorus_stream",
+        "ruleset": "mania",
+        "family": "stream",
+        "start_time": 32000,
+        "end_time": 38000,
+        "parameters": {
+          "subdivision": "1/16",
+          "density": 0.78,
+          "column_strategy": "alternating",
+          "column_order": [0, 2, 1, 3],
+          "jack_tolerance": 0.05
+        },
+        "constraints": {
+          "max_consecutive_same_column": 1,
+          "allow_chords": false,
+          "allow_ln": false
+        },
+        "transition_in": null,
+        "transition_out": null,
+        "confidence": 0.84,
+        "rationale": "Continuous rhythmic expression matches the vocal phrase and snare accents while preserving readability."
+      }
+    ],
+    "transitions": []
+  },
+  "concrete_objects": [
+    {"id": "n1", "type": "hit", "time": 32000, "end_time": null, "column": 0, "position": null, "source_pattern_id": "pattern_chorus_stream"},
+    {"id": "n2", "type": "hit", "time": 32125, "end_time": null, "column": 2, "position": null, "source_pattern_id": "pattern_chorus_stream"},
+    {"id": "n3", "type": "hit", "time": 32250, "end_time": null, "column": 1, "position": null, "source_pattern_id": "pattern_chorus_stream"},
+    {"id": "n4", "type": "hit", "time": 32375, "end_time": null, "column": 3, "position": null, "source_pattern_id": "pattern_chorus_stream"}
+  ],
+  "constraints": {
+    "timing": {
+      "snap": "beat_grid",
+      "allowed_subdivisions": ["1/4", "1/8", "1/16"]
+    },
+    "playability": {
+      "max_density": 0.9,
+      "allow_extreme_pattern": false
+    },
+    "music_alignment": {
+      "require_onset_alignment": true
+    }
+  },
+  "style": null,
+  "provenance": {
+    "origin": "ai_generated",
+    "agent": {"name": "mapping-planner", "version": "0.1"},
+    "model": {"provider": "example", "name": "planner", "version": "0.1"},
+    "generated_at": "2026-08-23T13:43:00+08:00",
+    "human_edits": []
+  },
+  "evaluation": {
+    "valid": null,
+    "difficulty": {},
+    "music_alignment_score": null,
+    "transition_score": null,
+    "human_acceptance": null,
+    "issues": []
+  }
+}
