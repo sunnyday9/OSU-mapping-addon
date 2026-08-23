@@ -1,7 +1,7 @@
 # 验收检查清单（Verification）
 
-> 版本：2026-08-21（M0–M6 全里程碑验收：M3 v2 多段/Spread/.osz/IDistributionProvider + M4 mania/M5 catch/M6 taiko 四模式独立 L0 + 真机 4 dll 已部署）
-> 原则：每项检查 = 命令/操作 + 预期阈值 + 实测 + 证据引用；L0 本机与 CI 可复现（`export PATH="/f/zcode-harness/OSU-mapping-addon/.dotnet:$PATH"`）；L1 静态断言；L2 headless + 真机（Realm + headless 生成 + 待用户选歌/编辑器交互）；L3 里程碑追溯。
+> 版本：2026-08-23（M0–M6 全里程碑验收 + **MVP A（Mapping IR 核心层）验收**）
+> 原则：每项检查 = 命令/操作 + 预期阈值 + 实测 + 证据引用；L0 本机与 CI 可复现（`export PATH="/f/zcode-harness/OSU-mapping-addon/.dotnet:$PATH"`）；L1 静态断言；L2 headless + 真机（Realm + headless 生成 + 待用户选歌/编辑器交互）；L3 里程碑追溯。MVP A 验收见 §7（独立于 M0–M6）。
 
 ## 0. 执行环境
 
@@ -135,3 +135,45 @@ OSU_EXECUTION_MODE=SingleThread dotnet test tests/osu.Game.Rulesets.AiStudio.Tai
 python -c "from tools.analysis.corpus import fit_distributions; print(fit_distributions())"
 ls "$APPDATA/osu/rulesets"
 ```
+
+---
+
+## 7. MVP A — Mapping IR 核心层验收（2026-08-23，分支 `feat/mvp-a-mapping-ir`）
+
+> 验收依据：`docs/new plan/mapping-ir-v0.1-spec.md` §27（v0.1 一致性标准）+ `docs/new plan/implementation/PLAN.md` §7 检查清单。全部 L0 级自动化，本机可重复。
+
+### 7.1 L0 — 自动化检查
+
+| # | 检查 | 命令 | 预期 | 实测 |
+|---|---|---|---|---|
+| A-1 | MappingIr 测试 | `dotnet test tests/AiStudio.Core.MappingIr.Tests/... -c Release` | 0 失败 | ✅ **43/43 通过** |
+| A-2 | 构建（warnings-as-errors） | `dotnet build tools/mapping-ir-demo/... -c Release`（含 Core） | 0 警告 0 错误 | ✅ 0×2 |
+| A-3 | 格式校验 | `dotnet format src/AiStudio.Core/... tests/AiStudio.Core.MappingIr.Tests/... tools/mapping-ir-demo/... --verify-no-changes` | 3 项退出码 0 | ✅ 3×OK |
+| A-4 | JSON Schema 校验 | `jsonschema.validate(生成文档, mapping-ir-v0.1.schema.json)`（Python） | 无 ValidationError | ✅ **PASS**（13 顶层键/枚举字符串/null 归一化全对齐） |
+| A-5 | 序列化 roundtrip | `JsonMappingIrSerializerTests.Roundtrip_PreservesSemantics` | 语义等价 | ✅ |
+| A-6 | 既有回归 | 四模式测试工程（见 L0-3） | 0 失败 | ✅ Osu 50 / Mania 18 / Taiko 58 / Catch 53 无回归 |
+
+### 7.2 端到端 demo（`tools/mapping-ir-demo`）
+
+| # | 检查 | 预期 | 实测 |
+|---|---|---|---|
+| A-7 | 闭环生成 | 合成 174 BPM 三段式 → 时间线 → 计划 → 生成 → 校验 → .osu | ✅ 3 段 / 3 intents / 3 patterns / 1840 对象 |
+| A-8 | 校验通过 | `Evaluation.Valid` = true，0 issues | ✅ valid=True |
+| A-9 | 音乐对齐 | `music_alignment_score` = 1.0（1/16 节奏网格） | ✅ 1.000 |
+| A-10 | 确定性 | 同 seed 两次运行 JSON 完全一致 | ✅ deterministic=True |
+| A-11 | .osu 产物 | 可解析 v14（`[General]/[Metadata]/[Difficulty]/[TimingPoints]/[HitObjects]`，Mode:3，4K 列 64/192/320/448，hold type 128） | ✅ 1903 行 / 对象数与文档一致 |
+
+### 7.3 L1 — 静态断言
+
+| # | 检查 | 证据 |
+|---|---|---|
+| A-12 | 9 family 全部可生成 | `Mania4KPatternProviderTests.AllFamilies_GenerateObjects`（single/stream/burst/jack/jump/jumpstream/single_ln/ln_rice/ln_release） |
+| A-13 | 确定性契约 | `Deterministic_SameSeedSameOutput` + `Deterministic_DifferentSeedDifferentOutput_ForRandomFamilies`（family 派生 seed，ADR-MVP-A-003） |
+| A-14 | 不变式 | 列 ∈ [0,3] / 时间单调 / 同列无重叠（含 LN 1 拍步长约束）/ LN end>start / 全部落在 1/16 网格（±2ms） |
+| A-15 | 校验器正反例 | `MappingValidatorTests` 10 用例（schema/version/列/LN/重叠/ruleset/空对象/意图区间） |
+| A-16 | LLM 替换点 | `IMappingPlanner` 接口 + `DeterministicMappingPlanner` 实现（ADR-MVP-A-004） |
+| A-17 | 零新依赖 | `MappingIr/` 纯 .NET 8（System.Text.Json），csproj 无新增 PackageReference |
+
+### 7.4 安全扫描
+
+- Mimosa 深度扫描（`scan-2026-08-23T07-22-46.960Z-a860362bf89d`，seal `sha256:c6f664ba...7c587d01`）：**0 finding**；依赖扫描 partial（MVP A 未引入新依赖，影响有限）。

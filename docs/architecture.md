@@ -1,7 +1,7 @@
 # 软件架构说明（Architecture）
 
-> 版本：v4 · 2026-08-21 · 对应 `docs/PLAN.md` v4 · 状态：M0–M6 已交付
-> 本文档是 PLAN.md 的架构落地视图，所有设计决策引用 PLAN.md 章节号；RC 覆盖情况见 `docs/rc-coverage.md`。
+> 版本：v5 · 2026-08-23 · 对应 `docs/PLAN.md` v5 · 状态：M0–M6 已交付 + **MVP A（Mapping IR 核心层）已交付**
+> 本文档是 PLAN.md 的架构落地视图，所有设计决策引用 PLAN.md 章节号；RC 覆盖情况见 `docs/rc-coverage.md`；AI Mapper 路线（MVP A）见 PLAN §8.1 与 `docs/new plan/implementation/`。
 
 ---
 
@@ -79,7 +79,7 @@
 | `Checks/`（×4 + `OsuStarRating`） | 自研增量检查（M1 交付物） | `CheckDifficultySettingsRanges` / `CheckSpreadStarRatingGaps` / `CheckComboColourCount` / `CheckSpinnerSpacing`；`OsuStarRating.TryCalculate` 为星数统一入口（失败返回 null，宁可少报不误报） | ✅ M1 已实现（详见 rc-coverage.md §3） |
 | `SuggestionEngine` | 把 Verify 页 `Issue` 翻译为面向制图者的 `Suggestion` | 严重度映射：Problem/Error → Warning；Warning → Advice；Negligible → Info；与生成引擎形成闭环（PLAN §7） | ✅ M1（骨架） |
 | `AiStudioAssistantMod` | 标识"经 AI Studio 辅助/生成"的谱面 | Fun 类 mod，`Ranked=false`，不改变玩法与计分；落实 NFR-3 | ✅ M0 |
-| `AiStudio.Core` | 共享核心：分析 / 合成 / 模型 | `Analysis/IAudioAnalyzer+IDistributionProvider+DistributionSet`、`Synthesis/IMapGenerator+SpreadPlanner+SpreadConstraint`；`Models/` 难度区间表/质量门禁/建议/生成设置；零外部依赖 | ✅ M3/M4/M5/M6 已实现 |
+| `AiStudio.Core` | 共享核心：分析 / 合成 / 模型 / **Mapping IR** | `Analysis/IAudioAnalyzer+IDistributionProvider+DistributionSet`、`Synthesis/IMapGenerator+SpreadPlanner+SpreadConstraint`、`Models/` 难度区间表/质量门禁/建议/生成设置、**`MappingIr/`（MVP A：IR 模型/序列化/时间线/规划/模式/校验/渲染）**；零外部依赖 | ✅ M3/M4/M5/M6 + **MVP A 已实现** |
 | `tools/analysis` | 离线 ranked 语料采集、参数分布拟合、模型训练 | Python，不进运行链路；由 `ai-tools.yml`（ruff+pytest）守护；`corpus.py` 已实现 P5–P95 拟合 + 合成回退 + distributions.json 输出（含 grid_ratio），`corpus-refresh.yml` 已接入真实/合成双路径 | ✅ M3/M4/M5/M6 已实现 |
 | CI/CD 工作流 ×5 | 构建/测试/格式/发布/兼容探针/语料刷新 | `ci.yml`（双平台 4 DLLs）、`release.yml`（4 zips + combined + INSTALL.txt 4 modes）、`api-compat.yml`（4 modes 探针）、`corpus-refresh.yml`（凭据安全 + peter-evans/create-pull-request）、`ai-tools.yml` | ✅ M0–M6 已实现 |
 
@@ -163,19 +163,69 @@
 
 ---
 
-## 6. 目录结构与文件对照
+## 6. MVP A — Mapping IR 核心层架构（2026-08-23 交付）
+
+> 依据：`docs/new plan/osu_lazer_ai_mapper_detailed_plan.md` §2.1/§26/§28、`docs/new plan/mapping-ir-v0.1-spec.md` §27。设计决策见 `docs/new plan/implementation/decisions/`（ADR-MVP-A-001~007）。
+
+### 6.1 数据流（确定性地基，LLM 可替换决策器）
+
+```
+Audio
+  → [MusicTimelineBuilder] BeatGrid/AudioSection → MusicTimeline（Section/Phrase/Event，拍对齐）
+  → [DeterministicMappingPlanner] 段落强度 → MappingIntent；密度 → PatternIntent（带 rationale）
+  → [Mania4KPatternProvider] PatternIntent + 上下文 → ConcreteObject[]（9 family，固定 seed 确定性）
+  → [MappingValidator] 无 LLM 结构/ruleset/对象/计划一致性检查
+  → [ManiaOsuRenderer] ConcreteObject[] → .osu v14（mode 3, 4K）
+  → [MappingIrPipeline] 闭环编排 + evaluation（valid/alignment）
+```
+
+### 6.2 模块职责
+
+| 模块 | 职责 | 关键设计 |
+|---|---|---|
+| `Model/MappingIrModels.cs` | IR v0.1 类型（13 顶层键） | sealed record + 枚举；`MusicSection` 因 null 归一化需求为 class（ADR-MVP-A-006） |
+| `Serialization/JsonMappingIrSerializer.cs` | JSON 序列化 | `SnakeCaseLower` 命名 + 枚举字符串；产物通过官方 schema 校验（ADR-MVP-A-002） |
+| `Model/MappingIrJsonConverters.cs` | null → `[]`/`{}` 归一化 | `HandleNull=true`（.NET 8 陷阱：可空类型参数的属性级 converter 不接管 null，ADR-MVP-A-006） |
+| `Timeline/MusicTimelineBuilder.cs` | 共享分析层 → IR 时间线 | 段边界 snap 到 beat；事件覆盖全部 beat；空 grid → Empty |
+| `Planning/MappingPlanner.cs` | 规则规划（`IMappingPlanner`） | 段落类型+能量 → Primary Intent；意图+密度 → family/subdivision；全部带 rationale；`IMappingPlanner` 为 LLM 替换点（ADR-MVP-A-004） |
+| `Patterns/Mania4KPatternProvider.cs` | Mania 4K 生成（9 family） | 确定性随机（family 派生 seed，ADR-MVP-A-003）；beat 网格量化（1/16 网格）；LN family 步长 = 1 拍防同列重叠（ADR-MVP-A-007） |
+| `Validation/MappingValidator.cs` | 文档校验 | schema/ruleset/对象（列/重叠/LN）/计划一致性；warning 不阻断 |
+| `Rendering/ManiaOsuRenderer.cs` | .osu 导出 | v14 格式；列 0–3 → x 64/192/320/448；hold → type 128 |
+| `MappingIrPipeline.cs` | 端到端编排 | analyzer 可注入（默认 `SyntheticAudioAnalyzer`，真实音频用 ruleset 程序集的 `BassAudioAnalyzer`）；`musicAlignmentScore` = 1/16 网格对齐（ADR-MVP-A-005） |
+
+### 6.3 与既有插件层的关系
+
+- 独立于 M0–M6 生成管线：`MappingIr/` 是新的语义 IR 地基层，`AiStudio.Core` 以源码编译并入四 ruleset 程序集，因此 MappingIr 代码自动进入全部插件 dll（零新依赖）；
+- 现有 `BassAudioAnalyzer`（各 ruleset 程序集内）可实现 `IAudioAnalyzer` 注入 pipeline，替换默认合成分析器；
+- 未来 Auto Mapper / Copilot 均消费同一 Semantic IR（spec §22/§23）。
+
+---
+
+## 7. 目录结构与文件对照
 
 ```
 OSU-mapping-addon/
 ├── docs/
-│   ├── PLAN.md                        # 核心计划（v4）：架构决策/门禁/里程碑/风险（M0–M6 已交付）
+│   ├── PLAN.md                        # 核心计划（v5）：架构决策/门禁/里程碑/风险（M0–M6 + MVP A 已交付）
 │   ├── requirements.md                # 需求：用户故事 + 功能/非功能需求（FR/NFR）
 │   ├── architecture.md                # 本文档：架构落地视图
-│   └── rc-coverage.md                 # RC 覆盖矩阵：条款 → 检查实现（PLAN §7）
+│   ├── rc-coverage.md                 # RC 覆盖矩阵：条款 → 检查实现（PLAN §7）
+│   └── new plan/                      # AI Mapper 新计划（详细设计/IR spec/Pattern Grammar）
+│       └── implementation/            # MVP 实施计划 + ADR-MVP-A-001~007 决策记录
 ├── src/
 │   ├── AiStudio.Core/                 # 共享核心（源码编译并入各 ruleset，零外部依赖）
-│   │   │   ├── Analysis/IAudioAnalyzer.cs + IDistributionProvider.cs + DistributionSet.cs # ✅ M3 已实现
+│   │   ├── Analysis/IAudioAnalyzer.cs + IDistributionProvider.cs + DistributionSet.cs # ✅ M3 已实现
 │   │   ├── Synthesis/IMapGenerator.cs + SpreadPlanner.cs + SpreadConstraint.cs # ✅ M3 已实现
+│   │   ├── MappingIr/                 # ✅ MVP A：Mapping IR v0.1 核心层
+│   │   │   ├── Model/                 #   IR 类型（record）+ 枚举 + JSON converter（null 归一化）
+│   │   │   ├── Serialization/         #   JsonMappingIrSerializer（snake_case，schema 校验 PASS）
+│   │   │   ├── Timeline/              #   MusicTimelineBuilder（BeatGrid → IR 时间线）
+│   │   │   ├── Planning/              #   IMappingPlanner + DeterministicMappingPlanner（规则型）
+│   │   │   ├── Patterns/              #   IPatternProvider + Mania4KPatternProvider（9 family）
+│   │   │   ├── Validation/            #   IMappingValidator + MappingValidator（无 LLM）
+│   │   │   ├── Rendering/             #   ManiaOsuRenderer（.osu v14 mode 3）
+│   │   │   ├── Analysis/              #   SyntheticAudioAnalyzer（测试/演示用确定性分析器）
+│   │   │   └── MappingIrPipeline.cs   #   端到端闭环编排
 │   │   ├── Models/                    #   DifficultyLevel / DifficultyRatingHelper /
 │   │   │                              #   OsugameDifficultyRanges / DifficultySettingsRange /
 │   │   │                              #   QualityGateReport / GenerationSettings / Suggestion
@@ -190,9 +240,13 @@ OSU-mapping-addon/
 │       ├── Edit/                      #   Composer / ToolboxGroup / SetupSection / Verifier
 │       ├── Suggestions/SuggestionEngine.cs  # Issue → 可执行建议
 │       └── osu.Game.Rulesets.AiStudio.Osu.csproj  # 锁版 NuGet + Compile Include 并入 Core
-├── tests/osu.Game.Rulesets.AiStudio.Osu.Tests/   # NUnit：verifier / ruleset / 区间表 /
-│                                                 # SuggestionEngine / TestWorkingBeatmap
-├── tools/analysis/                    # ✅ M3 已实现：ranked 语料采集、分布拟合（IDistributionProvider/distributions.json）、模型训练（Python，不进运行链路）
+├── tests/
+│   ├── osu.Game.Rulesets.AiStudio.Osu.Tests/   # NUnit：verifier / ruleset / 区间表 /
+│   │                                             # SuggestionEngine / TestWorkingBeatmap
+│   └── AiStudio.Core.MappingIr.Tests/           # ✅ MVP A：43 用例（不变式/确定性/golden/roundtrip/validator）
+├── tools/
+│   ├── analysis/                    # ✅ M3 已实现：ranked 语料采集、分布拟合（IDistributionProvider/distributions.json）、模型训练（Python，不进运行链路）
+│   └── mapping-ir-demo/             # ✅ MVP A：端到端 CLI 演示（合成音频 → 时间线 → 计划 → 生成 → 校验 → .osu/.json）
 ├── .github/workflows/
 │   ├── ci.yml                         # 双平台矩阵：restore/build/format/test + dll artifact
 │   ├── release.yml                    # tag v* → 打包 zip + draft GitHub Release
@@ -213,5 +267,7 @@ OSU-mapping-addon/
 | 建议系统 | `Suggestions/SuggestionEngine.cs` |
 | 难度区间表 / 门禁报告 | `AiStudio.Core/Models/OsugameDifficultyRanges.cs`、`QualityGateReport.cs` |
 | 生成/分析接口 | `AiStudio.Core/Analysis/IAudioAnalyzer.cs`、`Synthesis/IMapGenerator.cs` |
+| Mapping IR 模型/序列化 | `AiStudio.Core/MappingIr/Model/`、`Serialization/JsonMappingIrSerializer.cs`（MVP A） |
+| Mapping IR 管线/模式/校验/渲染 | `MappingIr/MappingIrPipeline.cs`、`Patterns/Mania4KPatternProvider.cs`、`Validation/MappingValidator.cs`、`Rendering/ManiaOsuRenderer.cs`（MVP A） |
 | 版本锁定 | `src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj`（2026.730.0） |
 | 质量门禁定义 | `docs/PLAN.md` §3；实现映射见 `docs/rc-coverage.md` §4 |

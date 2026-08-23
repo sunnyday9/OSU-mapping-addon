@@ -1,7 +1,9 @@
 # osu!lazer AI 制图辅助插件 — 项目计划（PLAN）
 
-> 版本：v4 · 2026-08-21 · 状态：M0–M6 已交付（M3 v2 多段/Spread/.osz/IDistributionProvider + M4/M5/M6 四模式独立插件） · 工作目录：feat/m3-m6-ai-studio-complete
+> 版本：v5 · 2026-08-23 · 状态：M0–M6 已交付 + **MVP A（Mapping IR 核心层）已交付** · 工作目录：feat/mvp-a-mapping-ir
 > 工作目录：`F:\zcode-harness\OSU-mapping-addon`
+> v5 变更：新增 §8.1 AI Mapper 路线（依据 `docs/new plan/` 新计划），MVP A = Mapping IR v0.1 核心层已落地（分支 `feat/mvp-a-mapping-ir`，详见 `docs/new plan/implementation/PLAN.md`）。
+> v4 变更：M0–M6 已交付（M3 v2 多段/Spread/.osz/IDistributionProvider + M4/M5/M6 四模式独立插件）。
 > v3 变更：① CI/CD 全面适配 GitHub；② 生成与辅助产出的谱面统一以"ranked 级质量"为基准（不冲 rank，质量对齐）；③ 四模式（osu!/mania/taiko/catch）各有独立生成方式/模型，共享分析层 + 每模式专属合成器。
 
 ---
@@ -184,6 +186,28 @@ don/kat 序列合成：频谱带能量区分低频鼓点（don）与高频边击
 | **M7 打磨（可选）** | 视情况 | ONNX BeatNet 节拍增强（四模式共享）、性能优化、多语言、用户文档 | 回归全绿 + 性能基准 |
 
 **质量闸门是"完成"的硬定义**：门禁不达绿即持续迭代，不以"能跑"为交付标准。
+
+---
+
+## 8.1 AI Mapper 路线（依据 `docs/new plan/` 新计划）
+
+> 2026-08 新增：基于 `docs/new plan/osu_lazer_ai_mapper_detailed_plan.md`（AI 作图系统详细设计）的**独立路线**，与上方 M0–M7 插件里程碑并行推进。核心原则：LLM 不直接生成 HitObjects——`Audio → MusicTimeline → MappingIntent → PatternIntent → 确定性 Renderer → 校验 → .osu`（计划 §2.1）。全部分阶段决策记录在 `docs/new plan/implementation/`（ADR-MVP-A-001~007）。
+
+### MVP A — Mapping IR 核心层 ✅ 已完成（2026-08-23，分支 `feat/mvp-a-mapping-ir`）
+
+| 交付物 | 实现位置 | 验证 |
+|---|---|---|
+| Mapping IR v0.1 类型（13 顶层键，schema 对齐） | `src/AiStudio.Core/MappingIr/Model/` | JSON Schema 校验 PASS（`mapping-ir-v0.1.schema.json`） |
+| JSON 序列化（snake_case/枚举字符串/null 归一化） | `MappingIr/Serialization/JsonMappingIrSerializer.cs` | roundtrip + 与示例文档同构测试 |
+| MusicTimeline 构建器 | `MappingIr/Timeline/MusicTimelineBuilder.cs` | 拍对齐/段落/事件测试 |
+| 确定性规则规划器（IMappingPlanner） | `MappingIr/Planning/MappingPlanner.cs` | 确定性 + 意图/转换测试 |
+| Mania 4K Pattern Provider（9 family） | `MappingIr/Patterns/Mania4KPatternProvider.cs` | 不变式 + 确定性测试 |
+| 校验器（无 LLM） | `MappingIr/Validation/MappingValidator.cs` | 正反例测试 |
+| .osu 渲染器（mode 3, 4K） | `MappingIr/Rendering/ManiaOsuRenderer.cs` | 段完整性/对象数/确定性测试 |
+| 端到端管线 + CLI 演示 | `MappingIr/MappingIrPipeline.cs` + `tools/mapping-ir-demo/` | demo：3 段 → 1840 对象 → valid=True alignment=1.0 deterministic=True |
+| 测试 | `tests/AiStudio.Core.MappingIr.Tests/` | **43/43 通过**；既有四模式 179 用例无回归 |
+
+**后续路线**（详见 `docs/new plan/implementation/PLAN.md` §8）：MVP-B = Difficulty 校准闭环（官方 ManiaDifficultyCalculator 迭代 → 目标 SR ±0.3★）；MVP-C = LLM Mapping Planner 替换（`IMappingPlanner` 接口就绪）；MVP-D = Standard Pattern Provider + 2D 几何渲染；Copilot 三粒度建议。
 
 ---
 

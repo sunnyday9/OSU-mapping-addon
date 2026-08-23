@@ -1,7 +1,8 @@
 # Ranking Criteria 覆盖矩阵（RC Coverage）
 
-> 版本：v3 · 2026-08-21 · 对应 `docs/PLAN.md` §7 / `docs/requirements.md` FR-1.3 · 状态：M0/M1/M2/M3 完成（M3 生成 v2：多段/Spread/.osz/IDistributionProvider），M4 mania / M5 catch / M6 taiko 已落地（各有独立检查集与合成器）
+> 版本：v4 · 2026-08-23 · 对应 `docs/PLAN.md` §7 / `docs/requirements.md` FR-1.3 · 状态：M0/M1/M2/M3 完成（M3 生成 v2：多段/Spread/.osz/IDistributionProvider），M4 mania / M5 catch / M6 taiko 已落地（各有独立检查集与合成器）
 > 维护约定（PLAN §7"可追溯"）：每条检查注释引用 RC 条款编号；新增/修改检查时必须同步本矩阵，否则检查不得合入。
+> MVP A（Mapping IR 核心层）不属于 RC 条款检查——其校验器（`MappingIr/Validation/MappingValidator.cs`）检查 IR 文档结构/规则集/对象合法性，是生成正确性的地基而非 ranked 合规检查；MVP A 验收见 `docs/verification.md` §7。
 
 ---
 

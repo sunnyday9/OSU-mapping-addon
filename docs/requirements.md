@@ -1,6 +1,7 @@
 # 需求文档（Requirements）
 
-> 来源：`docs/PLAN.md`（v3）· 状态：M0/M1/M2/M3/M4/M5/M6 已交付（见 docs/verification.md L3）
+> 来源：`docs/PLAN.md`（v5）· 状态：M0/M1/M2/M3/M4/M5/M6 已交付 + **MVP A（Mapping IR 核心层）已交付**（见 docs/verification.md §7）
+> MVP A 依据：`docs/new plan/osu_lazer_ai_mapper_detailed_plan.md` §26/§28、`docs/new plan/mapping-ir-v0.1-spec.md` §27
 
 ## 1. 用户故事
 
@@ -13,8 +14,24 @@
 | US-5 | 开发者 | 插件随 osu!lazer 版本演进保持兼容（自动侦测上游破坏性变更） | 持续（api-compat.yml 周级探针） |
 | US-6 | 维护者 | 每个里程碑的改动通过自动化检查（构建/测试/格式）才能合入 | M0 起（ci.yml 四程序集矩阵 + 覆盖率 70%） |
 | US-7 | 制图者 | 切换 mania/taiko/catch 模式时获得对应模式的生成与检查能力 | M4–M6（已交付） |
+| US-8 | AI Mapper 开发者 | 用统一的语义中间表示（Mapping IR）承载"音乐→意图→模式→对象"的规划与渲染，LLM 只做规划不直接生成 HitObjects | MVP A（已交付） |
+| US-9 | AI Mapper 开发者 | 无 LLM 时系统仍能跑通"音频分析→规划→生成→校验→.osu"完整闭环 | MVP A（已交付） |
 
 ## 2. 功能需求（按里程碑）
+
+### MVP A — Mapping IR 核心层（已交付，验收于 verification.md §7）
+
+- FR-A.1 Mapping IR v0.1 类型与 schema（`mapping-ir-v0.1.schema.json`）严格对齐，序列化产物通过 JSON Schema 校验（spec §27-1）；
+- FR-A.2 同一语义计划可确定性渲染为具体对象（spec §27-2）；固定 seed + 固定输入 → 固定输出（spec §21）；
+- FR-A.3 渲染输出可无 LLM 校验（spec §27-3）：列合法性/重叠/LN 约束/密度/计划一致性；
+- FR-A.4 替换 pattern 不重写 MusicTimeline（spec §27-4）：PatternIntent 与时间线解耦；
+- FR-A.5 未来 StyleProfile 可插入而不改 MappingIntent schema（spec §27-5）：style 可空字段已预留；
+- FR-A.6 provenance 可区分 AI 生成与人工编辑区域（spec §27-6）：`ProvenanceOrigin` 枚举 + HumanEdit 列表；
+- FR-A.7 统一 `IPatternProvider` 接口，Standard/Mania 可同接口实现（spec §27-7）；
+- FR-A.8 Mania 4K MVP Pattern 集（`mania-pattern-grammar-v0.1.md` §16）：single/stream/burst/jack/jump/jumpstream/single_ln/ln_rice/ln_release 全部可生成；
+- FR-A.9 规划层带可解释性（rationale），为 Milestone 1"AI 可以解释为什么这样作图"打底；
+- FR-A.10 端到端 CLI 演示：合成音频 → 时间线 → 计划 → 生成 → 校验 → .osu/.json 落盘。
+
 
 ### M0 脚手架（已完成，验收于 verification.md）
 - FR-0.1 规则集插件被 osu!lazer 识别（dll 命名、API 版本门禁、非 legacy 注册）；
@@ -67,5 +84,6 @@
 | M2 | 10 首测试曲成功率 >95%；产出通过全部质量门禁 |
 | M3 | spread 星距满足 RC 梯度；多段/kiai/break 可见；G3/G4 接真实分布；.osz 导出原版可玩 |
 | M4–M6 | 对应模式版 M2 门禁（列分布/jack/chord；don/kat；hyperdash 等） |
+| MVP A | 语义计划 schema 校验通过 + 确定性渲染 + 无 LLM 校验 + pattern 可替换不重写时间线 + Style 可插入 + provenance 区分 + 统一 provider 接口（spec §27 全部 7 条） |
 
 详细质量门禁定义见 `docs/PLAN.md` §3；逐项验收执行见 `docs/verification.md`。
