@@ -221,7 +221,7 @@ jobs:
 
       - name: Upload TRX test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.os }}
           path: "**/TestResults/**/*.trx"
@@ -239,7 +239,7 @@ jobs:
 
       - name: Upload ruleset DLL artifacts
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ruleset-dlls
           path: bin/Release/net8.0/*.dll
