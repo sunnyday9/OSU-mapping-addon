@@ -39,22 +39,22 @@ public sealed class DeterministicCandidateGenerator : IPatternCandidateGenerator
         double density = intent.Emphasis.Density;
         var candidates = new List<PatternCandidate>();
 
-        // 依据意图 primary 选择候选 family 组合
+        // 依据意图 primary 选择候选 family 组合（每个意图 4 个候选，满足 spec §11.1 的 3-5）
         string[] families = intent.Primary switch
         {
             MappingPrimaryIntent.Climax => new[] { "jumpstream", "stream", "single_ln", "jump" },
-            MappingPrimaryIntent.Escalation => new[] { "stream", "jump", "jumpstream" },
-            MappingPrimaryIntent.Establish => new[] { "single", "jump", "single_ln" },
-            MappingPrimaryIntent.DeEscalation or MappingPrimaryIntent.Resolution => new[] { "single", "single_ln", "jump" },
-            MappingPrimaryIntent.Repeat or MappingPrimaryIntent.Variation => new[] { "stream", "jump", "burst" },
-            _ => new[] { "single", "jump", "stream" },
+            MappingPrimaryIntent.Escalation => new[] { "stream", "jump", "jumpstream", "burst" },
+            MappingPrimaryIntent.Establish => new[] { "single", "jump", "single_ln", "stream" },
+            MappingPrimaryIntent.DeEscalation or MappingPrimaryIntent.Resolution => new[] { "single", "single_ln", "jump", "stream" },
+            MappingPrimaryIntent.Repeat or MappingPrimaryIntent.Variation => new[] { "stream", "jump", "burst", "single_ln" },
+            _ => new[] { "single", "jump", "stream", "burst" },
         };
 
         string[] subdivisions = density > 0.7
-            ? new[] { "1/16", "1/8", "1/16" }
+            ? new[] { "1/16", "1/8", "1/16", "1/8" }
             : density > 0.5
-                ? new[] { "1/8", "1/16", "1/8" }
-                : new[] { "1/4", "1/8", "1/4" };
+                ? new[] { "1/8", "1/16", "1/8", "1/4" }
+                : new[] { "1/4", "1/8", "1/4", "1/8" };
 
         for (int i = 0; i < families.Length && candidates.Count < 4; i++)
         {

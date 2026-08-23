@@ -4,52 +4,168 @@
   "title": "osu! AI Mapping IR v0.1",
   "description": "Semantic-first intermediate representation for AI-assisted osu! beatmap planning and rendering.",
   "type": "object",
-  "required": ["schema", "version", "document_id", "map", "ruleset", "difficulty_profile", "music_timeline", "mapping_plan", "constraints", "provenance", "evaluation"],
+  "required": [
+    "schema",
+    "version",
+    "document_id",
+    "map",
+    "ruleset",
+    "difficulty_profile",
+    "music_timeline",
+    "mapping_plan",
+    "constraints",
+    "provenance",
+    "evaluation"
+  ],
   "properties": {
-    "schema": {"const": "osu-ai-mapping-ir"},
-    "version": {"const": "0.1.0"},
-    "document_id": {"type": "string", "minLength": 1},
-    "map": {"$ref": "#/$defs/mapInfo"},
-    "ruleset": {"$ref": "#/$defs/ruleset"},
-    "difficulty_profile": {"$ref": "#/$defs/difficultyProfile"},
-    "music_timeline": {"$ref": "#/$defs/musicTimeline"},
-    "mapping_plan": {"$ref": "#/$defs/mappingPlan"},
+    "schema": {
+      "const": "osu-ai-mapping-ir"
+    },
+    "version": {
+      "const": "0.1.0"
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "map": {
+      "$ref": "#/$defs/mapInfo"
+    },
+    "ruleset": {
+      "$ref": "#/$defs/ruleset"
+    },
+    "difficulty_profile": {
+      "$ref": "#/$defs/difficultyProfile"
+    },
+    "music_timeline": {
+      "$ref": "#/$defs/musicTimeline"
+    },
+    "mapping_plan": {
+      "$ref": "#/$defs/mappingPlan"
+    },
     "concrete_objects": {
       "type": "array",
-      "items": {"$ref": "#/$defs/concreteObject"}
+      "items": {
+        "$ref": "#/$defs/concreteObject"
+      }
     },
-    "constraints": {"$ref": "#/$defs/constraints"},
-    "style": {"anyOf": [{"$ref": "#/$defs/styleProfile"}, {"type": "null"}]},
-    "provenance": {"$ref": "#/$defs/provenance"},
-    "evaluation": {"$ref": "#/$defs/evaluation"}
+    "constraints": {
+      "$ref": "#/$defs/constraints"
+    },
+    "style": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/styleProfile"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "evaluation": {
+      "$ref": "#/$defs/evaluation"
+    }
   },
   "$defs": {
-    "id": {"type": "string", "minLength": 1},
-    "timeMs": {"type": "integer", "minimum": 0},
-    "score01": {"type": "number", "minimum": 0, "maximum": 1},
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timeMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "score01": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "mapInfo": {
       "type": "object",
-      "required": ["audio_hash"],
+      "required": [
+        "audio_hash"
+      ],
       "properties": {
-        "audio_hash": {"type": "string", "minLength": 1},
-        "beatmap_id": {"type": ["integer", "null"]},
-        "difficulty_id": {"type": ["integer", "null"]},
-        "title": {"type": ["string", "null"]},
-        "artist": {"type": ["string", "null"]},
-        "creator": {"type": ["string", "null"]}
+        "audio_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "beatmap_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "difficulty_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artist": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "creator": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "audio_filename": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       },
       "additionalProperties": false
     },
     "ruleset": {
       "type": "object",
-      "required": ["ruleset", "variant"],
+      "required": [
+        "ruleset",
+        "variant"
+      ],
       "properties": {
-        "ruleset": {"enum": ["osu", "taiko", "catch", "mania"]},
+        "ruleset": {
+          "enum": [
+            "osu",
+            "taiko",
+            "catch",
+            "mania"
+          ]
+        },
         "variant": {
           "type": "object",
           "properties": {
-            "keys": {"type": ["integer", "null"], "minimum": 1, "maximum": 18},
-            "circle_size": {"type": ["number", "null"], "minimum": 0, "maximum": 11}
+            "keys": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 18
+            },
+            "circle_size": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 11
+            }
           },
           "additionalProperties": true
         }
@@ -58,31 +174,74 @@
     },
     "difficultyProfile": {
       "type": "object",
-      "required": ["target_star_rating", "dimensions", "preferences"],
+      "required": [
+        "target_star_rating",
+        "dimensions",
+        "preferences"
+      ],
       "properties": {
-        "target_star_rating": {"type": ["number", "null"], "minimum": 0},
-        "tolerance": {"type": "number", "minimum": 0},
+        "target_star_rating": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "tolerance": {
+          "type": "number",
+          "minimum": 0
+        },
         "dimensions": {
           "type": "object",
-          "required": ["density", "rhythm_complexity", "reading", "stamina", "technicality", "movement", "ln_complexity"],
+          "required": [
+            "density",
+            "rhythm_complexity",
+            "reading",
+            "stamina",
+            "technicality",
+            "movement",
+            "ln_complexity"
+          ],
           "properties": {
-            "density": {"$ref": "#/$defs/score01"},
-            "rhythm_complexity": {"$ref": "#/$defs/score01"},
-            "reading": {"$ref": "#/$defs/score01"},
-            "stamina": {"$ref": "#/$defs/score01"},
-            "technicality": {"$ref": "#/$defs/score01"},
-            "movement": {"$ref": "#/$defs/score01"},
-            "ln_complexity": {"$ref": "#/$defs/score01"}
+            "density": {
+              "$ref": "#/$defs/score01"
+            },
+            "rhythm_complexity": {
+              "$ref": "#/$defs/score01"
+            },
+            "reading": {
+              "$ref": "#/$defs/score01"
+            },
+            "stamina": {
+              "$ref": "#/$defs/score01"
+            },
+            "technicality": {
+              "$ref": "#/$defs/score01"
+            },
+            "movement": {
+              "$ref": "#/$defs/score01"
+            },
+            "ln_complexity": {
+              "$ref": "#/$defs/score01"
+            }
           },
           "additionalProperties": false
         },
         "preferences": {
           "type": "object",
           "properties": {
-            "allow_extreme_patterns": {"type": "boolean"},
-            "prefer_readability": {"type": "boolean"},
-            "prefer_music_sync": {"type": "boolean"},
-            "prefer_pattern_variety": {"type": "boolean"}
+            "allow_extreme_patterns": {
+              "type": "boolean"
+            },
+            "prefer_readability": {
+              "type": "boolean"
+            },
+            "prefer_music_sync": {
+              "type": "boolean"
+            },
+            "prefer_pattern_variety": {
+              "type": "boolean"
+            }
           },
           "additionalProperties": true
         }
@@ -91,29 +250,68 @@
     },
     "musicTimeline": {
       "type": "object",
-      "required": ["duration_ms", "tempo", "sections", "phrases", "events"],
+      "required": [
+        "duration_ms",
+        "tempo",
+        "sections",
+        "phrases",
+        "events"
+      ],
       "properties": {
-        "duration_ms": {"$ref": "#/$defs/timeMs"},
-        "tempo": {"$ref": "#/$defs/tempo"},
-        "sections": {"type": "array", "items": {"$ref": "#/$defs/section"}},
-        "phrases": {"type": "array", "items": {"$ref": "#/$defs/phrase"}},
-        "events": {"type": "array", "items": {"$ref": "#/$defs/musicEvent"}}
+        "duration_ms": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "tempo": {
+          "$ref": "#/$defs/tempo"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/section"
+          }
+        },
+        "phrases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/phrase"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/musicEvent"
+          }
+        }
       },
       "additionalProperties": false
     },
     "tempo": {
       "type": "object",
-      "required": ["base_bpm", "changes"],
+      "required": [
+        "base_bpm",
+        "changes"
+      ],
       "properties": {
-        "base_bpm": {"type": "number", "exclusiveMinimum": 0},
+        "base_bpm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "changes": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["time_ms", "bpm"],
+            "required": [
+              "time_ms",
+              "bpm"
+            ],
             "properties": {
-              "time_ms": {"$ref": "#/$defs/timeMs"},
-              "bpm": {"type": "number", "exclusiveMinimum": 0}
+              "time_ms": {
+                "$ref": "#/$defs/timeMs"
+              },
+              "bpm": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
             },
             "additionalProperties": false
           }
@@ -123,152 +321,488 @@
     },
     "section": {
       "type": "object",
-      "required": ["id", "start_time", "end_time", "type", "energy", "confidence"],
+      "required": [
+        "id",
+        "start_time",
+        "end_time",
+        "type",
+        "energy",
+        "confidence"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/id"},
-        "start_time": {"$ref": "#/$defs/timeMs"},
-        "end_time": {"$ref": "#/$defs/timeMs"},
-        "type": {"enum": ["intro", "verse", "pre_chorus", "chorus", "drop", "bridge", "break", "outro", "instrumental", "transition", "unknown"]},
-        "energy": {"$ref": "#/$defs/score01"},
-        "confidence": {"$ref": "#/$defs/score01"},
-        "labels": {"type": "array", "items": {"type": "string"}}
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "start_time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "end_time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "type": {
+          "enum": [
+            "intro",
+            "verse",
+            "pre_chorus",
+            "chorus",
+            "drop",
+            "bridge",
+            "break",
+            "outro",
+            "instrumental",
+            "transition",
+            "unknown"
+          ]
+        },
+        "energy": {
+          "$ref": "#/$defs/score01"
+        },
+        "confidence": {
+          "$ref": "#/$defs/score01"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       },
       "additionalProperties": false
     },
     "phrase": {
       "type": "object",
-      "required": ["id", "section_id", "start_time", "end_time", "type", "musical_role"],
+      "required": [
+        "id",
+        "section_id",
+        "start_time",
+        "end_time",
+        "type",
+        "musical_role"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/id"},
-        "section_id": {"$ref": "#/$defs/id"},
-        "start_time": {"$ref": "#/$defs/timeMs"},
-        "end_time": {"$ref": "#/$defs/timeMs"},
-        "type": {"enum": ["vocal_phrase", "instrumental_phrase", "rhythm_phrase", "melodic_phrase", "call_response", "motif", "fill", "unknown"]},
-        "musical_role": {"enum": ["lead", "support", "rhythm", "bass", "transition", "accent", "background", "unknown"]}
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "section_id": {
+          "$ref": "#/$defs/id"
+        },
+        "start_time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "end_time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "type": {
+          "enum": [
+            "vocal_phrase",
+            "instrumental_phrase",
+            "rhythm_phrase",
+            "melodic_phrase",
+            "call_response",
+            "motif",
+            "fill",
+            "unknown"
+          ]
+        },
+        "musical_role": {
+          "enum": [
+            "lead",
+            "support",
+            "rhythm",
+            "bass",
+            "transition",
+            "accent",
+            "background",
+            "unknown"
+          ]
+        }
       },
       "additionalProperties": false
     },
     "musicEvent": {
       "type": "object",
-      "required": ["id", "time", "duration", "type", "strength", "confidence", "source"],
+      "required": [
+        "id",
+        "time",
+        "duration",
+        "type",
+        "strength",
+        "confidence",
+        "source"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/id"},
-        "time": {"$ref": "#/$defs/timeMs"},
-        "duration": {"type": "integer", "minimum": 0},
-        "type": {"enum": ["beat", "onset", "kick", "snare", "hihat", "percussion", "bass", "chord", "vocal", "vocal_phrase", "melody", "accent", "silence", "transition"]},
-        "phrase_id": {"type": ["string", "null"]},
-        "strength": {"$ref": "#/$defs/score01"},
-        "features": {"type": "object", "additionalProperties": {"type": ["number", "string", "boolean", "null"]}},
-        "confidence": {"$ref": "#/$defs/score01"},
-        "source": {"type": "string"}
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "type": {
+          "enum": [
+            "beat",
+            "onset",
+            "kick",
+            "snare",
+            "hihat",
+            "percussion",
+            "bass",
+            "chord",
+            "vocal",
+            "vocal_phrase",
+            "melody",
+            "accent",
+            "silence",
+            "transition"
+          ]
+        },
+        "phrase_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "strength": {
+          "$ref": "#/$defs/score01"
+        },
+        "features": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "string",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "confidence": {
+          "$ref": "#/$defs/score01"
+        },
+        "source": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "mappingPlan": {
       "type": "object",
-      "required": ["intents", "patterns", "transitions"],
+      "required": [
+        "intents",
+        "patterns",
+        "transitions"
+      ],
       "properties": {
-        "intents": {"type": "array", "items": {"$ref": "#/$defs/mappingIntent"}},
-        "patterns": {"type": "array", "items": {"$ref": "#/$defs/patternIntent"}},
-        "transitions": {"type": "array", "items": {"$ref": "#/$defs/transition"}}
+        "intents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mappingIntent"
+          }
+        },
+        "patterns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/patternIntent"
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/transition"
+          }
+        }
       },
       "additionalProperties": false
     },
     "mappingIntent": {
       "type": "object",
-      "required": ["id", "start_time", "end_time", "primary", "secondary", "musical_targets", "emphasis", "complexity", "confidence"],
+      "required": [
+        "id",
+        "start_time",
+        "end_time",
+        "primary",
+        "secondary",
+        "musical_targets",
+        "emphasis",
+        "complexity",
+        "confidence"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/id"},
-        "start_time": {"$ref": "#/$defs/timeMs"},
-        "end_time": {"$ref": "#/$defs/timeMs"},
-        "primary": {"enum": ["establish", "repeat", "variation", "escalation", "release", "climax", "de_escalation", "contrast", "transition", "accent", "silence", "anticipation", "resolution"]},
-        "secondary": {"type": "array", "items": {"type": "string"}},
-        "musical_targets": {"type": "array", "items": {"type": "string"}},
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "start_time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "end_time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "primary": {
+          "enum": [
+            "establish",
+            "repeat",
+            "variation",
+            "escalation",
+            "release",
+            "climax",
+            "de_escalation",
+            "contrast",
+            "transition",
+            "accent",
+            "silence",
+            "anticipation",
+            "resolution"
+          ]
+        },
+        "secondary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "musical_targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "continuity": {
           "type": "object",
           "properties": {
-            "relation": {"enum": ["start_new", "continue", "repeat", "vary", "contrast", "release", "reset"]},
-            "reference": {"type": ["string", "null"]}
+            "relation": {
+              "enum": [
+                "start_new",
+                "continue",
+                "repeat",
+                "vary",
+                "contrast",
+                "release",
+                "reset"
+              ]
+            },
+            "reference": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           },
           "additionalProperties": false
         },
         "emphasis": {
           "type": "object",
-          "required": ["rhythm", "density", "movement", "pattern_complexity", "accent", "contrast"],
+          "required": [
+            "rhythm",
+            "density",
+            "movement",
+            "pattern_complexity",
+            "accent",
+            "contrast"
+          ],
           "properties": {
-            "rhythm": {"$ref": "#/$defs/score01"},
-            "density": {"$ref": "#/$defs/score01"},
-            "movement": {"$ref": "#/$defs/score01"},
-            "pattern_complexity": {"$ref": "#/$defs/score01"},
-            "accent": {"$ref": "#/$defs/score01"},
-            "contrast": {"$ref": "#/$defs/score01"}
+            "rhythm": {
+              "$ref": "#/$defs/score01"
+            },
+            "density": {
+              "$ref": "#/$defs/score01"
+            },
+            "movement": {
+              "$ref": "#/$defs/score01"
+            },
+            "pattern_complexity": {
+              "$ref": "#/$defs/score01"
+            },
+            "accent": {
+              "$ref": "#/$defs/score01"
+            },
+            "contrast": {
+              "$ref": "#/$defs/score01"
+            }
           },
           "additionalProperties": false
         },
-        "complexity": {"$ref": "#/$defs/score01"},
-        "confidence": {"$ref": "#/$defs/score01"},
-        "rationale": {"type": "string"}
+        "complexity": {
+          "$ref": "#/$defs/score01"
+        },
+        "confidence": {
+          "$ref": "#/$defs/score01"
+        },
+        "rationale": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "patternIntent": {
       "type": "object",
-      "required": ["id", "ruleset", "family", "start_time", "end_time", "parameters", "constraints", "confidence"],
+      "required": [
+        "id",
+        "ruleset",
+        "family",
+        "start_time",
+        "end_time",
+        "parameters",
+        "constraints",
+        "confidence"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/id"},
-        "ruleset": {"enum": ["osu", "taiko", "catch", "mania"]},
-        "family": {"type": "string", "minLength": 1},
-        "start_time": {"$ref": "#/$defs/timeMs"},
-        "end_time": {"$ref": "#/$defs/timeMs"},
-        "parameters": {"type": "object", "additionalProperties": true},
-        "constraints": {"type": "object", "additionalProperties": true},
-        "transition_in": {"type": ["string", "null"]},
-        "transition_out": {"type": ["string", "null"]},
-        "confidence": {"$ref": "#/$defs/score01"},
-        "rationale": {"type": "string"}
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "ruleset": {
+          "enum": [
+            "osu",
+            "taiko",
+            "catch",
+            "mania"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "end_time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "transition_in": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "transition_out": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "$ref": "#/$defs/score01"
+        },
+        "rationale": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "transition": {
       "type": "object",
-      "required": ["id", "from_pattern", "to_pattern", "transition_type", "constraints"],
+      "required": [
+        "id",
+        "from_pattern",
+        "to_pattern",
+        "transition_type",
+        "constraints"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/id"},
-        "from_pattern": {"$ref": "#/$defs/id"},
-        "to_pattern": {"$ref": "#/$defs/id"},
-        "transition_type": {"type": "string"},
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "from_pattern": {
+          "$ref": "#/$defs/id"
+        },
+        "to_pattern": {
+          "$ref": "#/$defs/id"
+        },
+        "transition_type": {
+          "type": "string"
+        },
         "overlap": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "properties": {
-            "start": {"$ref": "#/$defs/timeMs"},
-            "end": {"$ref": "#/$defs/timeMs"}
+            "start": {
+              "$ref": "#/$defs/timeMs"
+            },
+            "end": {
+              "$ref": "#/$defs/timeMs"
+            }
           },
-          "required": ["start", "end"],
+          "required": [
+            "start",
+            "end"
+          ],
           "additionalProperties": false
         },
-        "constraints": {"type": "object", "additionalProperties": true}
+        "constraints": {
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       "additionalProperties": false
     },
     "concreteObject": {
       "type": "object",
-      "required": ["id", "type", "time"],
+      "required": [
+        "id",
+        "type",
+        "time"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/id"},
-        "type": {"type": "string"},
-        "time": {"$ref": "#/$defs/timeMs"},
-        "end_time": {"type": ["integer", "null"], "minimum": 0},
-        "column": {"type": ["integer", "null"], "minimum": 0},
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "type": "string"
+        },
+        "time": {
+          "$ref": "#/$defs/timeMs"
+        },
+        "end_time": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "column": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
         "position": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "properties": {
-            "x": {"type": "number"},
-            "y": {"type": "number"}
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
           },
-          "required": ["x", "y"],
+          "required": [
+            "x",
+            "y"
+          ],
           "additionalProperties": false
         },
-        "source_pattern_id": {"type": ["string", "null"]}
+        "source_pattern_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       },
       "additionalProperties": false
     },
@@ -278,77 +812,216 @@
         "timing": {
           "type": "object",
           "properties": {
-            "snap": {"enum": ["beat_grid", "free", "hybrid"]},
-            "allowed_subdivisions": {"type": "array", "items": {"type": "string"}}
+            "snap": {
+              "enum": [
+                "beat_grid",
+                "free",
+                "hybrid"
+              ]
+            },
+            "allowed_subdivisions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           },
           "additionalProperties": false
         },
-        "playability": {"type": "object", "additionalProperties": true},
-        "music_alignment": {"type": "object", "additionalProperties": true}
+        "playability": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "music_alignment": {
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       "additionalProperties": false
     },
     "styleProfile": {
       "type": "object",
-      "required": ["id", "parameters"],
+      "required": [
+        "id",
+        "parameters"
+      ],
       "properties": {
-        "id": {"type": "string"},
-        "parameters": {"type": "object", "additionalProperties": {"type": ["number", "string", "boolean"]}}
+        "id": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "string",
+              "boolean"
+            ]
+          }
+        }
       },
       "additionalProperties": false
     },
     "provenance": {
       "type": "object",
-      "required": ["origin"],
+      "required": [
+        "origin"
+      ],
       "properties": {
-        "origin": {"enum": ["human", "rule_based", "ai_generated", "hybrid", "imported"]},
+        "origin": {
+          "enum": [
+            "human",
+            "rule_based",
+            "ai_generated",
+            "hybrid",
+            "imported"
+          ]
+        },
         "agent": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "properties": {
-            "name": {"type": "string"},
-            "version": {"type": "string"}
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         },
         "model": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "properties": {
-            "provider": {"type": "string"},
-            "name": {"type": "string"},
-            "version": {"type": "string"}
+            "provider": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         },
-        "generated_at": {"type": ["string", "null"], "format": "date-time"},
-        "human_edits": {"type": "array", "items": {"$ref": "#/$defs/humanEdit"}}
+        "generated_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "human_edits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/humanEdit"
+          }
+        }
       },
       "additionalProperties": false
     },
     "humanEdit": {
       "type": "object",
-      "required": ["type", "time_range"],
+      "required": [
+        "type",
+        "time_range"
+      ],
       "properties": {
-        "type": {"enum": ["add", "delete", "move", "replace_pattern", "change_rhythm", "change_ln", "other"]},
+        "type": {
+          "enum": [
+            "add",
+            "delete",
+            "move",
+            "replace_pattern",
+            "change_rhythm",
+            "change_ln",
+            "other"
+          ]
+        },
         "time_range": {
           "type": "array",
-          "prefixItems": [{"$ref": "#/$defs/timeMs"}, {"$ref": "#/$defs/timeMs"}],
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/timeMs"
+            },
+            {
+              "$ref": "#/$defs/timeMs"
+            }
+          ],
           "minItems": 2,
           "maxItems": 2
         },
-        "from": {"type": ["string", "null"]},
-        "to": {"type": ["string", "null"]}
+        "from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       },
       "additionalProperties": false
     },
     "evaluation": {
       "type": "object",
       "properties": {
-        "valid": {"type": ["boolean", "null"]},
-        "difficulty": {"type": "object", "additionalProperties": true},
-        "music_alignment_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-        "transition_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-        "human_acceptance": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-        "issues": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+        "valid": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "difficulty": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "music_alignment_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "transition_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "human_acceptance": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "difficulty_known": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
       },
       "additionalProperties": false
     }

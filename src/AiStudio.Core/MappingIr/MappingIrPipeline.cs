@@ -93,7 +93,7 @@ public sealed class MappingIrPipeline
         // 3. 文档骨架
         var document = MappingDocument.CreateEmpty(
             $"mapir_{Path.GetFileNameWithoutExtension(audioPath)}_{seed}",
-            new MapInfo(hashAudio(audioPath), Title: Path.GetFileNameWithoutExtension(audioPath)),
+            new MapInfo(hashAudio(audioPath), Title: Path.GetFileNameWithoutExtension(audioPath), AudioFilename: Path.GetFileName(audioPath)),
             new RulesetInfo(backend.Ruleset, new Dictionary<string, object?> { ["keys"] = 4 }),
             difficultyProfile);
         document = document with { MusicTimeline = timeline };
@@ -119,16 +119,16 @@ public sealed class MappingIrPipeline
                 evidence,
                 globalPlan,
                 patterns,
-                patterns.Skip(1).ToList(), // next patterns（baseline：无未来 pattern，用空/后置）
+                Array.Empty<PatternIntent>(), // next patterns：baseline 无未来 pattern（spec §10 future-aware 留待后续）
                 difficultyProfile);
 
             var intent = localPlanner.Plan(context);
             intents.Add(intent);
 
             // 候选生成 + 排名（有界 revision：critic 软问题 → 重排候选）
-            var best = selectBestCandidate(intent, difficultyProfile, seed, document, timeline, generated, counter, out int usedRevisions);
+            var best = selectBestCandidate(intent, difficultyProfile, seed, document, timeline, generated, counter, out int consumedObjects);
             patterns.Add(best);
-            counter += usedRevisions;
+            counter += consumedObjects;
 
             if (i > 0)
                 transitions.Add(new PatternTransition(
@@ -162,10 +162,13 @@ public sealed class MappingIrPipeline
                     ["observed_star_rating"] = observedSr,
                 },
                 MusicAlignmentScore: musicAlignmentScore(timeline, generated),
-                TransitionScore: transitions.Count == 0 ? 1.0 : 0.8,
+                // transition_score 留 null：本阶段未计算真实的转换评分（spec §20 evaluation 是观测性的，不编造常量）。
+                TransitionScore: null,
                 Issues: validation.Issues.Select(i => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?> { ["code"] = i.Code, ["severity"] = i.Severity, ["message"] = i.Message })
                     .Concat(criticReport.Issues.Select(i => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?> { ["code"] = i.Code, ["severity"] = i.Severity, ["message"] = i.Message, ["start_time"] = i.StartTime, ["end_time"] = i.EndTime }))
-                    .ToList()),
+                    .ToList(),
+                // spec §25.4：难度评估器不可用 → DifficultyKnown=false，不声称达到目标 SR
+                DifficultyKnown: observedSr is not null),
         };
 
         return document;
@@ -177,20 +180,23 @@ public sealed class MappingIrPipeline
 
     // ---- internals -------------------------------------------------------
 
-    private PatternIntent selectBestCandidate(MappingIntent intent, DifficultyProfile profile, int seed, MappingDocument document, MusicTimeline timeline, List<ConcreteObject> generated, int counter, out int usedRevisions)
+    private PatternIntent selectBestCandidate(MappingIntent intent, DifficultyProfile profile, int seed, MappingDocument document, MusicTimeline timeline, List<ConcreteObject> generated, int counter, out int consumedObjects)
     {
-        usedRevisions = 0;
+        consumedObjects = 0;
         var candidates = candidateGenerator.Generate(intent, profile, backend.Ruleset, seed, timeline.Tempo.BaseBpm);
         var ranked = candidateRanker.Rank(candidates, intent, profile);
 
         if (ranked.Count == 0)
         {
             // 无有效候选：回退一个最简 single pattern
-            usedRevisions = 1;
-            return fallbackSingle(intent, timeline.Tempo.BaseBpm);
+            var fallback = fallbackSingle(intent, timeline.Tempo.BaseBpm);
+            var ctx = new PatternGenerationContext(timeline, document, generated, profile, seed);
+            var result = backend.Provider.Generate(fallback, ctx);
+            consumedObjects = appendObjects(result.Objects, generated, counter);
+            return fallback;
         }
 
-        // 生成第一名候选并跑 critic 的局部检查；软问题 → 尝试下一名候选（有界）
+        // 按排名尝试候选（有界 revision）；无硬问题即接受
         int attempt = 0;
         while (attempt < ranked.Count && attempt < MaxRevisionsPerPhrase)
         {
@@ -203,8 +209,7 @@ public sealed class MappingIrPipeline
                 bool hasHardIssue = result.Issues.Any(i => i.Severity == "error");
                 if (!hasHardIssue)
                 {
-                    usedRevisions = attempt + 1;
-                    generated.AddRange(result.Objects.Select(o => o with { Id = $"obj_{counter++}" }));
+                    consumedObjects = appendObjects(result.Objects, generated, counter);
                     return rankedCandidate.Candidate.Intent;
                 }
             }
@@ -212,12 +217,25 @@ public sealed class MappingIrPipeline
             attempt++;
         }
 
-        // 预算耗尽：接受第一个候选（宁可出草稿）
-        usedRevisions = Math.Min(ranked.Count, MaxRevisionsPerPhrase);
+        // 预算耗尽：接受最后一个尝试过的候选（宁可出草稿）
         var last = ranked[Math.Min(attempt, ranked.Count - 1)].Candidate.Intent;
         var lastCtx = new PatternGenerationContext(timeline, document, generated, profile, seed);
-        generated.AddRange(backend.Provider.Generate(last, lastCtx).Objects.Select(o => o with { Id = $"obj_{counter++}" }));
+        var lastResult = backend.Provider.Generate(last, lastCtx);
+        consumedObjects = appendObjects(lastResult.Objects, generated, counter);
         return last;
+    }
+
+    /// <summary>把对象追加到生成列表，返回实际追加的数量（供外层 counter 精确推进，杜绝 ID 重复）。</summary>
+    private static int appendObjects(IReadOnlyList<ConcreteObject> objects, List<ConcreteObject> generated, int counter)
+    {
+        int added = 0;
+        foreach (var obj in objects)
+        {
+            generated.Add(obj with { Id = $"obj_{counter++}" });
+            added++;
+        }
+
+        return added;
     }
 
     private static PatternIntent fallbackSingle(MappingIntent intent, double bpm)

@@ -23,7 +23,7 @@ public sealed class MusicTimelineBuilder
         int durationMs = Math.Max(0, (int)Math.Round(grid.BeatTimes[^1] + beatLengthMs));
 
         var normalizedSections = normalizeSections(sections, grid, durationMs);
-        var irSections = normalizedSections.Select(s => toIrSection(s, grid)).ToList();
+        var irSections = normalizedSections.Select((s, i) => toIrSection(s, grid, i)).ToList();
         var phrases = buildPhrases(irSections);
         var events = buildEvents(grid, irSections, beatLengthMs);
 
@@ -54,7 +54,9 @@ public sealed class MusicTimelineBuilder
         result = result.OrderBy(s => s.StartTime).ToList();
         result[0] = result[0] with { StartTime = 0 };
         result[^1] = result[^1] with { EndTime = durationMs };
-        return result;
+
+        // 过滤 snap 后坍缩为零长的段（相邻短段可能吸到同一 beat）——否则会产生重复 section ID。
+        return result.Where(s => s.EndTime > s.StartTime).ToList();
     }
 
     private static double snapToBeat(double time, BeatGrid grid)
@@ -77,9 +79,9 @@ public sealed class MusicTimelineBuilder
         return best;
     }
 
-    private static MusicSection toIrSection(AudioSection s, BeatGrid grid)
+    private static MusicSection toIrSection(AudioSection s, BeatGrid grid, int index)
         => new(
-            $"section_{s.StartTime:0}",
+            $"section_{index}",
             (int)Math.Round(s.StartTime),
             (int)Math.Round(s.EndTime),
             mapSectionType(s.SectionType),

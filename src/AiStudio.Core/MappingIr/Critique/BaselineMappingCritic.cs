@@ -18,45 +18,49 @@ public sealed class BaselineMappingCritic : IMappingCritic
         var timeline = document.MusicTimeline;
         var plan = document.MappingPlan;
 
-        if (objects is null || objects.Count == 0)
-        {
+        bool hasObjects = objects is { Count: > 0 };
+        if (!hasObjects)
             issues.Add(new CriticIssue("no_objects", "error", 0, 0, "No concrete objects generated.", new[] { "generate_patterns" }));
-            return new CriticReport(false, issues);
-        }
 
         // ---- hard: 重叠（同列）----
-        var byColumn = objects.Where(o => o.Column is not null).GroupBy(o => o.Column!.Value);
-        foreach (var group in byColumn)
+        if (hasObjects)
         {
-            var ordered = group.OrderBy(o => o.Time).ToList();
-            for (int i = 1; i < ordered.Count; i++)
+            var byColumn = objects!.Where(o => o.Column is not null).GroupBy(o => o.Column!.Value);
+            foreach (var group in byColumn)
             {
-                var prev = ordered[i - 1];
-                var cur = ordered[i];
-                if (cur.Time < (prev.EndTime ?? prev.Time) && cur.Time >= prev.Time)
+                var ordered = group.OrderBy(o => o.Time).ToList();
+                for (int i = 1; i < ordered.Count; i++)
                 {
-                    issues.Add(new CriticIssue("column_overlap", "error", prev.Time, cur.Time,
-                        $"Column {group.Key}: '{prev.Id}' and '{cur.Id}' overlap.",
-                        new[] { "shift_object", "change_column" }));
-                    break;
+                    var prev = ordered[i - 1];
+                    var cur = ordered[i];
+                    if (cur.Time < (prev.EndTime ?? prev.Time) && cur.Time >= prev.Time)
+                    {
+                        issues.Add(new CriticIssue("column_overlap", "error", prev.Time, cur.Time,
+                            $"Column {group.Key}: '{prev.Id}' and '{cur.Id}' overlap.",
+                            new[] { "shift_object", "change_column" }));
+                        break;
+                    }
                 }
             }
         }
 
         // ---- soft: 密度 vs 能量不匹配 ----
         double beatMs = timeline.Tempo.BaseBpm > 0 ? 60000.0 / timeline.Tempo.BaseBpm : 0;
-        foreach (var section in timeline.Sections)
+        if (hasObjects)
         {
-            int count = objects.Count(o => o.Time >= section.StartTime && o.Time < section.EndTime);
-            double sectionMs = Math.Max(section.EndTime - section.StartTime, 1);
-            double density = count / sectionMs * 1000.0; // objects/sec
-            double expectedDensity = section.Energy * 12.0; // 能量 1.0 → ~12 obj/s（粗基线）
-
-            if (density < expectedDensity * 0.5 && section.Energy > 0.6)
+            foreach (var section in timeline.Sections)
             {
-                issues.Add(new CriticIssue("density_mismatch", "warning", section.StartTime, section.EndTime,
-                    $"Section '{section.Id}' energy {section.Energy:0.00} but density only {density:0.0}/s (expected ~{expectedDensity:0.0}/s).",
-                    new[] { "increase_density", "introduce_pattern_variation" }));
+                int count = objects!.Count(o => o.Time >= section.StartTime && o.Time < section.EndTime);
+                double sectionMs = Math.Max(section.EndTime - section.StartTime, 1);
+                double density = count / sectionMs * 1000.0; // objects/sec
+                double expectedDensity = section.Energy * 12.0; // 能量 1.0 → ~12 obj/s（粗基线）
+
+                if (density < expectedDensity * 0.5 && section.Energy > 0.6)
+                {
+                    issues.Add(new CriticIssue("density_mismatch", "warning", section.StartTime, section.EndTime,
+                        $"Section '{section.Id}' energy {section.Energy:0.00} but density only {density:0.0}/s (expected ~{expectedDensity:0.0}/s).",
+                        new[] { "increase_density", "introduce_pattern_variation" }));
+                }
             }
         }
 
@@ -73,10 +77,10 @@ public sealed class BaselineMappingCritic : IMappingCritic
         }
 
         // ---- soft: 节奏对齐（1/16 网格）----
-        if (beatMs > 0)
+        if (hasObjects && beatMs > 0)
         {
             double grid = beatMs / 16.0;
-            int offGrid = objects.Count(o =>
+            int offGrid = objects!.Count(o =>
             {
                 double nearest = Math.Round(o.Time / grid) * grid;
                 return Math.Abs(o.Time - nearest) >= 2.0;
@@ -85,7 +89,7 @@ public sealed class BaselineMappingCritic : IMappingCritic
             if (offGrid > 0)
             {
                 issues.Add(new CriticIssue("rhythm_alignment", "warning", 0, timeline.DurationMs,
-                    $"{offGrid}/{objects.Count} objects off the 1/16 rhythm grid.",
+                    $"{offGrid}/{objects!.Count} objects off the 1/16 rhythm grid.",
                     new[] { "quantize_objects" }));
             }
         }

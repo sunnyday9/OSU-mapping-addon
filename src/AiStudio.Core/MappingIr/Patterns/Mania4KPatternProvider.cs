@@ -188,7 +188,7 @@ public sealed class Mania4KPatternProvider : IPatternProvider
 
     private static List<ConcreteObject> generateSingleLn(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        double durationMs = Math.Max(parameters.LnDurationBeats, 0.25) * rhythm.BeatMs;
+        double durationMs = lnDurationMs(intent, parameters, rhythm);
         var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
         int i = 0;
@@ -196,7 +196,7 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         {
             int col = order[i % order.Count];
             int t = rhythm.Time(intent, i);
-            result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: t + (int)Math.Round(durationMs), Column: col, SourcePatternId: intent.Id));
+            result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: Math.Min(t + (int)Math.Round(durationMs), intent.EndTime), Column: col, SourcePatternId: intent.Id));
             i++;
         }
 
@@ -205,7 +205,7 @@ public sealed class Mania4KPatternProvider : IPatternProvider
 
     private static List<ConcreteObject> generateLnRice(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        double durationMs = Math.Max(parameters.LnDurationBeats, 0.25) * rhythm.BeatMs;
+        double durationMs = lnDurationMs(intent, parameters, rhythm);
         double ratio = parameters.LnRatio;
         var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
@@ -217,7 +217,7 @@ public sealed class Mania4KPatternProvider : IPatternProvider
             if (isLn)
             {
                 int col = order[i % order.Count];
-                result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: t + (int)Math.Round(durationMs), Column: col, SourcePatternId: intent.Id));
+                result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: Math.Min(t + (int)Math.Round(durationMs), intent.EndTime), Column: col, SourcePatternId: intent.Id));
             }
             else
             {
@@ -233,7 +233,7 @@ public sealed class Mania4KPatternProvider : IPatternProvider
 
     private static List<ConcreteObject> generateLnRelease(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        double durationMs = Math.Max(parameters.LnDurationBeats, 0.25) * rhythm.BeatMs;
+        double durationMs = lnDurationMs(intent, parameters, rhythm);
         var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
         int i = 0;
@@ -242,12 +242,19 @@ public sealed class Mania4KPatternProvider : IPatternProvider
             int col = order[i % order.Count];
             // release pattern: LN 结束时间精确落在后续节奏点上（不静默移动）。
             int t = rhythm.Time(intent, i);
-            result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: t + (int)Math.Round(durationMs), Column: col, SourcePatternId: intent.Id));
+            result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: Math.Min(t + (int)Math.Round(durationMs), intent.EndTime), Column: col, SourcePatternId: intent.Id));
             i++;
         }
 
         return result;
     }
+
+    /// <summary>
+    /// LN 时长：clamp 到 ≤1 拍（= LN family 步长，ADR-MVP-A-007 不变式）——
+    /// 同列 LN 首尾相接不重叠；`ln_duration_beats &gt; 1` 时截断而非生成非法重叠。
+    /// </summary>
+    private static double lnDurationMs(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm)
+        => Math.Min(Math.Max(parameters.LnDurationBeats, 0.25), 1.0) * rhythm.BeatMs;
 
     // ---- column helpers -------------------------------------------------
 
@@ -257,7 +264,8 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         if (size >= KeyCount)
             return new[] { 0, 1, 2, 3 };
 
-        // 确定性 + 多样性：从列集中选相邻列对（0-1 / 1-2 / 2-3），按 index 轮换，rng 做起始偏移。
+        // 确定性 + 多样性：从 column_order 排列中连续取 size 个（带环绕），
+        // 起始偏移由 index 轮换 + rng 决定——和弦形状取决于配置的列顺序（相邻或分离均可）。
         int start = (index + rng.Next(KeyCount - size + 1)) % (KeyCount - size + 1);
         var cols = new List<int>();
         for (int k = 0; k < size; k++)

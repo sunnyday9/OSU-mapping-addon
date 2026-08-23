@@ -48,6 +48,7 @@ jobs:
           dotnet restore tests/osu.Game.Rulesets.AiStudio.Mania.Tests/osu.Game.Rulesets.AiStudio.Mania.Tests.csproj
           dotnet restore tests/osu.Game.Rulesets.AiStudio.Catch.Tests/osu.Game.Rulesets.AiStudio.Catch.Tests.csproj
           dotnet restore tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj
+          dotnet restore tests/AiStudio.Core.MappingIr.Tests/AiStudio.Core.MappingIr.Tests.csproj
 
       - name: Build plugin projects (Release)
         run: |
@@ -62,6 +63,8 @@ jobs:
           dotnet build tests/osu.Game.Rulesets.AiStudio.Mania.Tests/osu.Game.Rulesets.AiStudio.Mania.Tests.csproj -c Release --no-restore
           dotnet build tests/osu.Game.Rulesets.AiStudio.Catch.Tests/osu.Game.Rulesets.AiStudio.Catch.Tests.csproj -c Release --no-restore
           dotnet build tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj -c Release --no-restore
+          dotnet build tests/AiStudio.Core.MappingIr.Tests/AiStudio.Core.MappingIr.Tests.csproj -c Release --no-restore
+          dotnet build tools/mapping-ir-demo/mapping-ir-demo.csproj -c Release --no-restore
 
       - name: Format check - plugin osu
         run: dotnet format src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj --verify-no-changes --no-restore
@@ -87,6 +90,9 @@ jobs:
       - name: Format check - tests taiko
         run: dotnet format tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj --verify-no-changes --no-restore
 
+      - name: Format check - MappingIr tests
+        run: dotnet format tests/AiStudio.Core.MappingIr.Tests/AiStudio.Core.MappingIr.Tests.csproj --verify-no-changes --no-restore
+
       - name: Run tests - osu (Release)
         env:
           OSU_EXECUTION_MODE: SingleThread
@@ -106,6 +112,49 @@ jobs:
         env:
           OSU_EXECUTION_MODE: SingleThread
         run: dotnet test tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj -c Release --no-build
+
+      - name: Run tests - MappingIr (Release)
+        run: dotnet test tests/AiStudio.Core.MappingIr.Tests/AiStudio.Core.MappingIr.Tests.csproj -c Release --no-build
+
+      - name: Schema conformance check (MappingIr)
+        shell: bash
+        run: |
+          set -e
+          if command -v python3 >/dev/null 2>&1; then PYTHON=python3; elif command -v python >/dev/null 2>&1; then PYTHON=python; else PYTHON=""; fi
+          if [ -z "$PYTHON" ]; then
+            echo "::warning::python not found — skipping jsonschema validation (C# SchemaConformanceTests still run)"
+            exit 0
+          fi
+          "$PYTHON" - << 'PY'
+          import json, sys
+          try:
+              from jsonschema import validate, ValidationError
+          except ImportError:
+              print("::warning::jsonschema not installed — skipping (C# SchemaConformanceTests still run)")
+              sys.exit(0)
+          # 生成 demo 文档并校验（确定性：seed=42）
+          import subprocess, tempfile, os, glob
+          out = tempfile.mkdtemp()
+          demo = None
+          for pat in ["tools/mapping-ir-demo/bin/Release/net8.0/mapping-ir-demo*", "tools/mapping-ir-demo/bin/Release/net8.0/win-x64/mapping-ir-demo*"]:
+              hits = glob.glob(pat)
+              if hits:
+                  demo = hits[0]
+                  break
+          if not demo:
+              print("::warning::mapping-ir-demo not built — skipping document validation")
+              sys.exit(0)
+          subprocess.run([demo, out, "42"], check=True, capture_output=True)
+          doc_path = os.path.join(out, "mapping_ir.json")
+          doc = json.load(open(doc_path, encoding="utf-8"))
+          schema = json.load(open("src/AiStudio.Core/MappingIr/Schema/mapping-ir-v0.1.schema.json", encoding="utf-8"))
+          try:
+              validate(instance=doc, schema=schema)
+              print("JSON Schema validation PASS")
+          except ValidationError as e:
+              print(f"::error::JSON Schema validation FAIL: {list(e.absolute_path)} {e.message}")
+              sys.exit(1)
+          PY
 
       - name: Collect coverage - osu
         run: dotnet test tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj -c Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults/osu -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura

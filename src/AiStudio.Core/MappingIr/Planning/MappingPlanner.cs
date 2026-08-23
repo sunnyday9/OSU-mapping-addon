@@ -26,8 +26,6 @@ public sealed class DeterministicMappingPlanner : IMappingPlanner
         ArgumentNullException.ThrowIfNull(timeline);
         ArgumentNullException.ThrowIfNull(difficultyProfile);
 
-        // 注：Random(seed) 是确定性伪随机（ADR-MVP-A-003），用于可复现的模式选择，非安全/加密用途。
-        var rng = new Random(seed);
         var intents = new List<MappingIntent>();
         var patterns = new List<PatternIntent>();
         var transitions = new List<PatternTransition>();
@@ -41,7 +39,7 @@ public sealed class DeterministicMappingPlanner : IMappingPlanner
             var intent = createIntent(section, timeline, difficultyProfile, i, seed);
             intents.Add(intent);
 
-            var pattern = createPattern(intent, section, difficultyProfile, rng, seed, timeline.Tempo.BaseBpm);
+            var pattern = createPattern(intent, section, difficultyProfile, i, seed, timeline.Tempo.BaseBpm);
             patterns.Add(pattern);
 
             if (i > 0)
@@ -118,10 +116,10 @@ public sealed class DeterministicMappingPlanner : IMappingPlanner
     private static double complexityFor(DifficultyProfile profile, double energy)
         => clamp01(profile.Dimensions.RhythmComplexity * 0.5 + energy * 0.5);
 
-    private static PatternIntent createPattern(MappingIntent intent, MusicSection section, DifficultyProfile profile, Random rng, int seed, double bpm)
+    private static PatternIntent createPattern(MappingIntent intent, MusicSection section, DifficultyProfile profile, int sectionIndex, int seed, double bpm)
     {
-        var (subdivision, family) = selectRhythm(intent, profile.Dimensions.Density, rng);
-        string columnStrategy = pickColumnStrategy(rng, seed);
+        var (subdivision, family) = selectRhythm(intent, profile.Dimensions.Density);
+        string columnStrategy = pickColumnStrategy(sectionIndex, seed);
 
         var parameters = new Dictionary<string, object?>
         {
@@ -156,7 +154,7 @@ public sealed class DeterministicMappingPlanner : IMappingPlanner
     }
 
     /// <summary>密度 → 节奏细分 + family 的选择表（确定性：只依赖输入，不用 rng 的决策路径留作随机轮换）。</summary>
-    private static (string subdivision, string family) selectRhythm(MappingIntent intent, double density, Random rng)
+    private static (string subdivision, string family) selectRhythm(MappingIntent intent, double density)
     {
         switch (intent.Primary)
         {
@@ -177,11 +175,11 @@ public sealed class DeterministicMappingPlanner : IMappingPlanner
         }
     }
 
-    private static string pickColumnStrategy(Random rng, int seed)
+    private static string pickColumnStrategy(int sectionIndex, int seed)
     {
-        // seed 决定轮换起点；rng 用于同 seed 下的稳定选择。
+        // 确定性轮换：seed 决定起点，section 序号决定偏移——不依赖跨段的 RNG 序列（ADR-MVP-A-003/008）。
         var strategies = new[] { "alternating", "mirror", "staircase" };
-        return strategies[rng.Next(strategies.Length)];
+        return strategies[(seed + sectionIndex) % strategies.Length];
     }
 
     private static int[] columnOrderFor(string strategy)

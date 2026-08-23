@@ -41,8 +41,10 @@ public sealed class ManiaOsuRenderer
 
     private static void appendGeneral(StringBuilder sb, MappingDocument document)
     {
+        // 音频文件名来自 MapInfo.AudioFilename（pipeline 填入实际文件）；缺失时回退占位。
+        string audioFile = document.Map.AudioFilename ?? "audio.mp3";
         sb.AppendLine("[General]");
-        sb.AppendLine("AudioFilename: audio.mp3");
+        sb.AppendLine($"AudioFilename: {audioFile}");
         sb.AppendLine("AudioLeadIn: 0");
         sb.AppendLine("PreviewTime: 0");
         sb.AppendLine("Countdown: 0");

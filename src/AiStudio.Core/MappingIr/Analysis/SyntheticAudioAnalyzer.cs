@@ -15,10 +15,17 @@ public sealed class SyntheticAudioAnalyzer : IAudioAnalyzer
 
     public SyntheticAudioAnalyzer(double bpm, int durationMs, double[]? sectionStarts = null, double[]? sectionEnergies = null)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(bpm, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(durationMs, 0);
+
         this.bpm = bpm;
         this.durationMs = durationMs;
         this.sectionStarts = sectionStarts ?? new[] { 0.0 };
         this.sectionEnergies = sectionEnergies ?? new[] { 0.5 };
+
+        // fail-fast：段起点与能量数组长度不匹配时直接报错，避免静默截断/复用最后一个能量
+        if (this.sectionStarts.Length != this.sectionEnergies.Length)
+            throw new ArgumentException($"sectionStarts ({this.sectionStarts.Length}) must match sectionEnergies ({this.sectionEnergies.Length}).", nameof(sectionEnergies));
     }
 
     public Task<BeatGrid> AnalyseBeatAsync(string audioPath, CancellationToken cancellationToken = default)
@@ -37,7 +44,7 @@ public sealed class SyntheticAudioAnalyzer : IAudioAnalyzer
         {
             double start = sectionStarts[i];
             double end = i + 1 < sectionStarts.Length ? sectionStarts[i + 1] : durationMs;
-            double energy = sectionEnergies[Math.Min(i, sectionEnergies.Length - 1)];
+            double energy = sectionEnergies[i];
             sections.Add(new AudioSection(start, end, energy, SectionType: i == 0 ? AudioSectionType.Intro : i == 1 ? AudioSectionType.Chorus : AudioSectionType.Outro));
         }
 

@@ -34,9 +34,10 @@ public static class SpreadPlanner
 
         DifficultyLevel minLevel = drainMs switch
         {
-            < drain_3_30 => DifficultyLevel.Normal,
-            < drain_4_15 => DifficultyLevel.Hard,
-            < drain_5_00 => DifficultyLevel.Insane,
+            // drain 越长 → 起跳难度越高（RC drain 阶梯：3:30 可 Normal、4:15 可 Hard、5:00 可 Insane）
+            >= drain_5_00 => DifficultyLevel.Insane,
+            >= drain_4_15 => DifficultyLevel.Hard,
+            >= drain_3_30 => DifficultyLevel.Normal,
             _ => DifficultyLevel.Normal,
         };
 

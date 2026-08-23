@@ -63,7 +63,8 @@ public sealed record MapInfo(
     int? DifficultyId = null,
     string? Title = null,
     string? Artist = null,
-    string? Creator = null);
+    string? Creator = null,
+    string? AudioFilename = null);
 
 public sealed record RulesetInfo(
     RulesetKind Ruleset,
@@ -397,14 +398,18 @@ public sealed record HumanEdit(
     string? From = null,
     string? To = null);
 
-/// <summary>评估（观察性，非生成器隐藏真相源）。</summary>
+/// <summary>
+/// 评估（观察性，非生成器隐藏真相源）。
+/// <see cref="DifficultyKnown"/> 为 false 表示难度评估器不可用——系统不得声称达到目标 SR（spec §25.4）。
+/// </summary>
 public sealed record Evaluation(
     bool? Valid,
     [property: JsonConverter(typeof(NullToEmptyDictionaryConverter))] IReadOnlyDictionary<string, object?>? Difficulty = null,
     double? MusicAlignmentScore = null,
     double? TransitionScore = null,
     double? HumanAcceptance = null,
-    IReadOnlyList<IReadOnlyDictionary<string, object?>>? Issues = null)
+    IReadOnlyList<IReadOnlyDictionary<string, object?>>? Issues = null,
+    bool? DifficultyKnown = null)
 {
     public static Evaluation Empty => new(null, null, null, null, null, Array.Empty<IReadOnlyDictionary<string, object?>>());
 }
