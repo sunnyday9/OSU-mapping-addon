@@ -49,6 +49,7 @@ jobs:
           dotnet restore tests/osu.Game.Rulesets.AiStudio.Catch.Tests/osu.Game.Rulesets.AiStudio.Catch.Tests.csproj
           dotnet restore tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj
           dotnet restore tests/AiStudio.Core.MappingIr.Tests/AiStudio.Core.MappingIr.Tests.csproj
+          dotnet restore tools/mapping-ir-demo/mapping-ir-demo.csproj
 
       - name: Build plugin projects (Release)
         run: |
