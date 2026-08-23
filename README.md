@@ -33,9 +33,16 @@ dotnet format --verify-no-changes
 
 ```
 src/AiStudio.Core/                    共享核心（纯 .NET 8，源码并入各 ruleset 程序集）
-src/osu.Game.Rulesets.AiStudio.Osu/   osu! 标准模式插件（当前开发重点）
-tests/                                单元测试（NUnit）
+  └── MappingIr/                      MVP A：Mapping IR v0.1 核心层（模型/序列化/时间线/规划/模式/校验/渲染）
+src/osu.Game.Rulesets.AiStudio.Osu/   osu! 标准模式插件
+src/osu.Game.Rulesets.AiStudio.Mania/ mania 插件
+src/osu.Game.Rulesets.AiStudio.Catch/ catch 插件
+src/osu.Game.Rulesets.AiStudio.Taiko/ taiko 插件
+tests/                                单元测试（NUnit；含 AiStudio.Core.MappingIr.Tests 43 用例）
+tools/analysis/                       ranked 语料采集/分布拟合（Python，离线）
+tools/mapping-ir-demo/                MVP A 端到端 CLI 演示（合成音频 → .osu/.json）
 docs/                                 需求/架构/RC 覆盖矩阵/验收清单
+docs/new plan/                        AI Mapper 新计划 + implementation（实施计划与 ADR）
 .github/workflows/                    CI/CD（GitHub Actions）
 ```
 
@@ -45,8 +52,9 @@ docs/                                 需求/架构/RC 覆盖矩阵/验收清单
 |---|---|---|
 | M0 脚手架 | ✅ 完成 | 规则集可被游戏识别，三个编辑器注入点就位 |
 | M1 检查引擎 v1 | ✅ 完成 | 4 条 RC 客观检查 + Verify 页/侧栏 + SuggestionEngine |
-| M2 生成 v1 | ✅ 完成 | BASS 音频分析（BPM/beat/onset/段落）+ 模板合成 + SR 校准闭环 + 五道门禁 + .osu 导出 + Setup 页生成 UI；38/38 测试、覆盖率 74.2% |
-| M3 生成 v2 | ⏳ | 多难度预设/spread、段落/kiai/break、滑条质量、建议系统 |
-| M4–M7 | ⏳ | mania / catch / taiko / 打磨 |
+| M2 生成 v1 | ✅ 完成 | BASS 音频分析（BPM/beat/onset/段落）+ 模板合成 + SR 校准闭环 + 五道门禁 + .osu 导出 + Setup 页生成 UI |
+| M3 生成 v2 | ✅ 完成 | 多难度预设/spread、段落/kiai/break、.osz 导出、IDistributionProvider 语料分布 |
+| M4–M6 | ✅ 完成 | mania / catch / taiko 独立插件（各有检查集与合成器） |
+| **MVP A Mapping IR** | ✅ 完成 | Mapping IR v0.1 核心层：语义 IR + 确定性 Mania 4K 生成 + 校验 + .osu 渲染 + 端到端 CLI；JSON Schema 校验 PASS、43/43 测试、零新依赖 |
 
-详见 `docs/PLAN.md` 与 `docs/verification.md`。
+详见 `docs/PLAN.md`（§8.1 AI Mapper 路线）、`docs/verification.md`（§7 MVP A 验收）与 `docs/new plan/implementation/`（实施计划 + ADR-MVP-A-001~007）。

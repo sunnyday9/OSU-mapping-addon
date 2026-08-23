@@ -6,7 +6,6 @@ on:
       - main
   pull_request:
 
-# 同一分支/PR 的新提交会取消仍在运行的旧 CI，节省 runner 时间
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -31,7 +30,6 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # 仓库无 .sln，restore/build/format/test 均显式指定 csproj 路径
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -43,45 +41,205 @@ jobs:
       - name: Restore
         run: |
           dotnet restore src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj
+          dotnet restore src/osu.Game.Rulesets.AiStudio.Mania/osu.Game.Rulesets.AiStudio.Mania.csproj
+          dotnet restore src/osu.Game.Rulesets.AiStudio.Catch/osu.Game.Rulesets.AiStudio.Catch.csproj
+          dotnet restore src/osu.Game.Rulesets.AiStudio.Taiko/osu.Game.Rulesets.AiStudio.Taiko.csproj
           dotnet restore tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj
+          dotnet restore tests/osu.Game.Rulesets.AiStudio.Mania.Tests/osu.Game.Rulesets.AiStudio.Mania.Tests.csproj
+          dotnet restore tests/osu.Game.Rulesets.AiStudio.Catch.Tests/osu.Game.Rulesets.AiStudio.Catch.Tests.csproj
+          dotnet restore tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj
+          dotnet restore tests/AiStudio.Core.MappingIr.Tests/AiStudio.Core.MappingIr.Tests.csproj
+          dotnet restore tools/mapping-ir-demo/mapping-ir-demo.csproj
 
-      - name: Build plugin project (Release)
-        run: dotnet build src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj -c Release --no-restore
+      - name: Build plugin projects (Release)
+        run: |
+          dotnet build src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj -c Release --no-restore
+          dotnet build src/osu.Game.Rulesets.AiStudio.Mania/osu.Game.Rulesets.AiStudio.Mania.csproj -c Release --no-restore
+          dotnet build src/osu.Game.Rulesets.AiStudio.Catch/osu.Game.Rulesets.AiStudio.Catch.csproj -c Release --no-restore
+          dotnet build src/osu.Game.Rulesets.AiStudio.Taiko/osu.Game.Rulesets.AiStudio.Taiko.csproj -c Release --no-restore
 
-      - name: Build test project (Release)
-        run: dotnet build tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj -c Release --no-restore
+      - name: Build test projects (Release)
+        run: |
+          dotnet build tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj -c Release --no-restore
+          dotnet build tests/osu.Game.Rulesets.AiStudio.Mania.Tests/osu.Game.Rulesets.AiStudio.Mania.Tests.csproj -c Release --no-restore
+          dotnet build tests/osu.Game.Rulesets.AiStudio.Catch.Tests/osu.Game.Rulesets.AiStudio.Catch.Tests.csproj -c Release --no-restore
+          dotnet build tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj -c Release --no-restore
+          dotnet build tests/AiStudio.Core.MappingIr.Tests/AiStudio.Core.MappingIr.Tests.csproj -c Release --no-restore
+          dotnet build tools/mapping-ir-demo/mapping-ir-demo.csproj -c Release --no-restore
 
-      - name: Format check - plugin
+      - name: Format check - plugin osu
         run: dotnet format src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj --verify-no-changes --no-restore
 
-      - name: Format check - tests
+      - name: Format check - plugin mania
+        run: dotnet format src/osu.Game.Rulesets.AiStudio.Mania/osu.Game.Rulesets.AiStudio.Mania.csproj --verify-no-changes --no-restore
+
+      - name: Format check - plugin catch
+        run: dotnet format src/osu.Game.Rulesets.AiStudio.Catch/osu.Game.Rulesets.AiStudio.Catch.csproj --verify-no-changes --no-restore
+
+      - name: Format check - plugin taiko
+        run: dotnet format src/osu.Game.Rulesets.AiStudio.Taiko/osu.Game.Rulesets.AiStudio.Taiko.csproj --verify-no-changes --no-restore
+
+      - name: Format check - tests osu
         run: dotnet format tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj --verify-no-changes --no-restore
 
-      - name: Run tests (Release)
+      - name: Format check - tests mania
+        run: dotnet format tests/osu.Game.Rulesets.AiStudio.Mania.Tests/osu.Game.Rulesets.AiStudio.Mania.Tests.csproj --verify-no-changes --no-restore
+
+      - name: Format check - tests catch
+        run: dotnet format tests/osu.Game.Rulesets.AiStudio.Catch.Tests/osu.Game.Rulesets.AiStudio.Catch.Tests.csproj --verify-no-changes --no-restore
+
+      - name: Format check - tests taiko
+        run: dotnet format tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj --verify-no-changes --no-restore
+
+      - name: Format check - MappingIr tests
+        run: dotnet format tests/AiStudio.Core.MappingIr.Tests/AiStudio.Core.MappingIr.Tests.csproj --verify-no-changes --no-restore
+
+      - name: Run tests - osu (Release)
         env:
-          # TestScene 测试必须 headless 执行（osu.Framework 测试宿主）
           OSU_EXECUTION_MODE: SingleThread
-        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj -c Release --no-build --results-directory TestResults --logger "trx;LogFileName=results.trx"
+        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj -c Release --no-build
+
+      - name: Run tests - mania (Release)
+        env:
+          OSU_EXECUTION_MODE: SingleThread
+        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Mania.Tests/osu.Game.Rulesets.AiStudio.Mania.Tests.csproj -c Release --no-build
+
+      - name: Run tests - catch (Release)
+        env:
+          OSU_EXECUTION_MODE: SingleThread
+        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Catch.Tests/osu.Game.Rulesets.AiStudio.Catch.Tests.csproj -c Release --no-build
+
+      - name: Run tests - taiko (Release)
+        env:
+          OSU_EXECUTION_MODE: SingleThread
+        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj -c Release --no-build
+
+      - name: Run tests - MappingIr (Release)
+        run: dotnet test tests/AiStudio.Core.MappingIr.Tests/AiStudio.Core.MappingIr.Tests.csproj -c Release --no-build
+
+      - name: Schema conformance check (MappingIr)
+        shell: bash
+        run: |
+          set -e
+          if command -v python3 >/dev/null 2>&1; then PYTHON=python3; elif command -v python >/dev/null 2>&1; then PYTHON=python; else PYTHON=""; fi
+          if [ -z "$PYTHON" ]; then
+            echo "::warning::python not found — skipping jsonschema validation (C# SchemaConformanceTests still run)"
+            exit 0
+          fi
+          "$PYTHON" - << 'PY'
+          import json, sys
+          try:
+              from jsonschema import validate, ValidationError
+          except ImportError:
+              print("::warning::jsonschema not installed — skipping (C# SchemaConformanceTests still run)")
+              sys.exit(0)
+          # 生成 demo 文档并校验（确定性：seed=42）
+          import subprocess, tempfile, os, glob
+          out = tempfile.mkdtemp()
+          demo = None
+          for pat in ["tools/mapping-ir-demo/bin/Release/net8.0/mapping-ir-demo",
+                      "tools/mapping-ir-demo/bin/Release/net8.0/mapping-ir-demo.exe",
+                      "tools/mapping-ir-demo/bin/Release/net8.0/win-x64/mapping-ir-demo.exe"]:
+              if os.path.isfile(pat):
+                  demo = pat
+                  break
+          if not demo:
+              print("::warning::mapping-ir-demo executable not found — skipping document validation")
+              sys.exit(0)
+          subprocess.run([demo, out, "42"], check=True, capture_output=True)
+          doc_path = os.path.join(out, "mapping_ir.json")
+          doc = json.load(open(doc_path, encoding="utf-8"))
+          schema = json.load(open("src/AiStudio.Core/MappingIr/Schema/mapping-ir-v0.1.schema.json", encoding="utf-8"))
+          try:
+              validate(instance=doc, schema=schema)
+              print("JSON Schema validation PASS")
+          except ValidationError as e:
+              print(f"::error::JSON Schema validation FAIL: {list(e.absolute_path)} {e.message}")
+              sys.exit(1)
+          PY
+
+      - name: Collect coverage - osu
+        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Osu.Tests/osu.Game.Rulesets.AiStudio.Osu.Tests.csproj -c Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults/osu -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+        continue-on-error: true
+
+      - name: Collect coverage - mania
+        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Mania.Tests/osu.Game.Rulesets.AiStudio.Mania.Tests.csproj -c Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults/mania -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+        continue-on-error: true
+
+      - name: Collect coverage - catch
+        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Catch.Tests/osu.Game.Rulesets.AiStudio.Catch.Tests.csproj -c Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults/catch -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+        continue-on-error: true
+
+      - name: Collect coverage - taiko
+        run: dotnet test tests/osu.Game.Rulesets.AiStudio.Taiko.Tests/osu.Game.Rulesets.AiStudio.Taiko.Tests.csproj -c Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults/taiko -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+        continue-on-error: true
+
+      - name: Log coverage results (osu only gates)
+        shell: bash
+        run: |
+          set -e
+          echo "Coverage XMLs (if any):"
+          find TestResults -name "coverage.cobertura.xml" 2>/dev/null | head -n 20 || true
+          COVERAGE_FILE=$(find TestResults/osu -name "coverage.cobertura.xml" 2>/dev/null | head -n 1)
+          if [ -z "$COVERAGE_FILE" ]; then
+            echo "::warning::No coverage file at TestResults/osu/**/coverage.cobertura.xml — coverlet/XPlat may conflict with RuntimeIdentifier win-x64; skipping gate (L0 tests already green)"
+            exit 0
+          fi
+          if command -v python3 >/dev/null 2>&1; then PYTHON=python3; elif command -v python >/dev/null 2>&1; then PYTHON=python; else PYTHON=""; fi
+          if [ -n "$PYTHON" ]; then
+            "$PYTHON" - << 'PY'
+          import xml.etree.ElementTree as ET, glob, sys
+          files = glob.glob("TestResults/osu/**/coverage.cobertura.xml", recursive=True)
+          if not files:
+              print("::warning::No osu coverage file — skipping gate")
+              sys.exit(0)
+          f = files[0]
+          r = ET.parse(f).getroot()
+          # 排除 MappingIr 命名空间：它由独立测试项目（AiStudio.Core.MappingIr.Tests）守护，
+          # compile-include 进 osu 程序集后不应稀释 osu 既有代码的覆盖率门禁。
+          covered = valid = 0
+          for cls in r.findall(".//class"):
+              name = cls.get("name", "")
+              if "MappingIr" in name:
+                  continue
+              covered += int(cls.get("lines-covered", "0"))
+              valid += int(cls.get("lines-valid", "0"))
+          if valid == 0:
+              print("::warning::No valid lines after excluding MappingIr — skipping gate")
+              sys.exit(0)
+          rate = covered / valid
+          print(f"osu line-rate={rate:.4f} ({rate*100:.2f}%) covered={covered}/{valid} (excl. MappingIr)")
+          if rate < 0.70:
+              print(f"::error::osu coverage {rate*100:.2f}% below 70%")
+              sys.exit(1)
+          print("osu coverage gate passed")
+          PY
+          else
+            RATE=$(grep -o 'line-rate="[0-9.]*"' "$COVERAGE_FILE" | head -1 | grep -o '[0-9.]*')
+            echo "osu line-rate=$RATE"
+          fi
 
       - name: Upload TRX test results
-        if: always() # 测试失败也要保留结果文件
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.os }}
-          path: TestResults/results.trx
+          path: "**/TestResults/**/*.trx"
           if-no-files-found: warn
 
-      # 将 dll 暂存到仓库根目录 bin/Release/net8.0 下，便于用统一相对路径上传（规避 Windows 反斜杠路径问题）
-      - name: Stage ruleset DLL
+      - name: Stage ruleset DLLs
         if: runner.os == 'Linux'
         shell: bash
         run: |
           mkdir -p bin/Release/net8.0
           cp src/osu.Game.Rulesets.AiStudio.Osu/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Osu.dll bin/Release/net8.0/
+          cp src/osu.Game.Rulesets.AiStudio.Mania/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Mania.dll bin/Release/net8.0/
+          cp src/osu.Game.Rulesets.AiStudio.Catch/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Catch.dll bin/Release/net8.0/
+          cp src/osu.Game.Rulesets.AiStudio.Taiko/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Taiko.dll bin/Release/net8.0/
 
-      - name: Upload ruleset DLL artifact
-        if: runner.os == 'Linux' # 只在 Linux runner 上传一次，避免矩阵重复
+      - name: Upload ruleset DLL artifacts
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: osu.Game.Rulesets.AiStudio.Osu.dll
-          path: bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Osu.dll
+          name: ruleset-dlls
+          path: bin/Release/net8.0/*.dll

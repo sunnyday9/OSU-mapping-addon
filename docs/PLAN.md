@@ -1,7 +1,9 @@
 # osu!lazer AI 制图辅助插件 — 项目计划（PLAN）
 
-> 版本：v3 · 2026-08-15 · 状态：待评审，未开始执行
-> 工作目录：`F:\zcode-harness\OSU-mapping-addon`（greenfield，空仓）
+> 版本：v5 · 2026-08-23 · 状态：M0–M6 已交付 + **MVP A（Mapping IR 核心层）已交付** · 工作目录：feat/mvp-a-mapping-ir
+> 工作目录：`F:\zcode-harness\OSU-mapping-addon`
+> v5 变更：新增 §8.1 AI Mapper 路线（依据 `docs/new plan/` 新计划），MVP A = Mapping IR v0.1 核心层已落地（分支 `feat/mvp-a-mapping-ir`，详见 `docs/new plan/implementation/PLAN.md`）。
+> v4 变更：M0–M6 已交付（M3 v2 多段/Spread/.osz/IDistributionProvider + M4/M5/M6 四模式独立插件）。
 > v3 变更：① CI/CD 全面适配 GitHub；② 生成与辅助产出的谱面统一以"ranked 级质量"为基准（不冲 rank，质量对齐）；③ 四模式（osu!/mania/taiko/catch）各有独立生成方式/模型，共享分析层 + 每模式专属合成器。
 
 ---
@@ -20,7 +22,8 @@
 **产出物形态**：插件生成/编辑的是**普通的标准 per-mode .osu 文件**（Mode=0/1/2/3），任何人在原版 osu!lazer/stable 中即可游玩，游玩不依赖本插件；插件只是"制图工作室"载体。
 
 **既定技术决策**（可评审推翻）：
-1. AI 管线 = C# 进程内 BASS_FX 分析 + 规则/模板合成（零新增原生依赖、离线可用；ONNX 神经网络增强为后续选项）；
+1. AI 管线 = C# 进程内 BASS 解码 + spectral-flux/块能量分析 + 规则/模板合成（零新增原生依赖、离线可用；ONNX 神经网络增强为后续选项；BASS_FX BPMDecodeGet 已验证不可靠并弃用，详见 §5.1 / `BassAudioAnalyzer`）；
+
 2. **CI/CD 全面适配 GitHub**：托管 GitHub，GitHub Actions 构建/测试/发布，GitHub Releases 分发；
 3. 开发顺序 = ranked 检查引擎先行（它是生成器的质量闸门，同时先验证编辑器注入点是否畅通）。
 
@@ -44,7 +47,7 @@
 | 调用官方难度/成绩计算 | ✅ | `new OsuDifficultyCalculator(RulesetInfo, workingBeatmap).Calculate(mods)`（public ctor、同步、内置 10s 超时、无内部缓存） |
 | 程序化导入/导出谱面 | ✅ | `BeatmapManager.Import/ExportLegacy`、`LegacyBeatmapEncoder`、`LegacyBeatmapExporter`（.osz） |
 | 注册自定义 mod | ✅ | override `GetModsFor`（自定义 mod 默认 `Ranked=false`） |
-| 音频解码与 DSP | ✅ | osu.Framework 自带 ppy.ManagedBass / .Fx（BASS_FX BPM/beat、FFT），插件零新增原生依赖 |
+| 音频解码与 DSP | ✅ | osu.Framework 自带 ppy.ManagedBass / .Fx（BASS 解码 + FFT；BASS_FX BPM/beat 已验证不可靠并弃用，改用 spectral-flux + 块能量精化，见 `BassAudioAnalyzer`），插件零新增原生依赖 |
 | 新增编辑器页签/替换 Editor 屏幕 | ❌ | Editor 硬编码 5 页签（SongSetup/Compose/Design/Timing/Verify），功能全部收纳进 Compose 面板 + Setup 分区 + Verify 检查 |
 | 追加官方通用 BeatmapVerifier 检查 | ❌ | 其 checks 列表为 private，只能以 ruleset verifier 身份并行运行 |
 | 自定义 ruleset 参与官方 ranked | ❌ | 服务端只认 4 个 legacy ruleset（与本项目"不冲 rank"定位一致） |
@@ -121,8 +124,7 @@ OSU-mapping-addon/
 ### 5.1 共享分析层（模式无关）
 
 - 解码：ppy.ManagedBass `BassFlags.Decode` 离线解码（osu.Framework 自带，零新增原生依赖、跨平台）；
-- 节拍：`BASS_FX_BPM_DecodeGet` 取 BPM，`BASS_FX_BPM_BeatDecodeGet` 取 beat 位置；
-- onset/能量：`Bass.ChannelGetData` FFT 算 spectral flux → onset 检测（阈值+最小间隔 pick），加能量包络/RMS/频带能量；
+- 节拍：曾尝试 `BASS_FX_BPM_DecodeGet` / `BASS_FX_BPM_BeatDecodeGet`，实测 `BPMDecodeGet` 对合成点击轨返回 0 且无错误码、不可靠，已**弃用该路径**；当前实现（`BassAudioAnalyzer`）改用 `Bass.ChannelGetData` FFT 的 **spectral-flux + 64 采样块能量精化（≈1.45ms 分辨率）** 自研节拍/onset 检测（阈值+最小间隔 pick、IOI 中位数求 BPM，回退自相关），加能量包络/RMS/频带能量；BASS_FX 仍作为曾尝试路径保留于文档以记录决策；
 - 段落：能量曲线 + 重复度估计切分 intro/verse/chorus/bridge/outro；
 - **增强选项（M7）**：ONNX Runtime（Microsoft.ML.OnnxRuntime，MIT）进程内跑 BeatNet CRNN（CC-BY-4.0，PyTorch 训练后 `torch.onnx` 导出）提升 beat/downbeat 精度，四个模式共享收益。
 
@@ -184,6 +186,28 @@ don/kat 序列合成：频谱带能量区分低频鼓点（don）与高频边击
 | **M7 打磨（可选）** | 视情况 | ONNX BeatNet 节拍增强（四模式共享）、性能优化、多语言、用户文档 | 回归全绿 + 性能基准 |
 
 **质量闸门是"完成"的硬定义**：门禁不达绿即持续迭代，不以"能跑"为交付标准。
+
+---
+
+## 8.1 AI Mapper 路线（依据 `docs/new plan/` 新计划）
+
+> 2026-08 新增：基于 `docs/new plan/osu_lazer_ai_mapper_detailed_plan.md`（AI 作图系统详细设计）的**独立路线**，与上方 M0–M7 插件里程碑并行推进。核心原则：LLM 不直接生成 HitObjects——`Audio → MusicTimeline → MappingIntent → PatternIntent → 确定性 Renderer → 校验 → .osu`（计划 §2.1）。全部分阶段决策记录在 `docs/new plan/implementation/`（ADR-MVP-A-001~007）。
+
+### MVP A — Mapping IR 核心层 ✅ 已完成（2026-08-23，分支 `feat/mvp-a-mapping-ir`）
+
+| 交付物 | 实现位置 | 验证 |
+|---|---|---|
+| Mapping IR v0.1 类型（13 顶层键，schema 对齐） | `src/AiStudio.Core/MappingIr/Model/` | JSON Schema 校验 PASS（`mapping-ir-v0.1.schema.json`） |
+| JSON 序列化（snake_case/枚举字符串/null 归一化） | `MappingIr/Serialization/JsonMappingIrSerializer.cs` | roundtrip + 与示例文档同构测试 |
+| MusicTimeline 构建器 | `MappingIr/Timeline/MusicTimelineBuilder.cs` | 拍对齐/段落/事件测试 |
+| 确定性规则规划器（IMappingPlanner） | `MappingIr/Planning/MappingPlanner.cs` | 确定性 + 意图/转换测试 |
+| Mania 4K Pattern Provider（9 family） | `MappingIr/Patterns/Mania4KPatternProvider.cs` | 不变式 + 确定性测试 |
+| 校验器（无 LLM） | `MappingIr/Validation/MappingValidator.cs` | 正反例测试 |
+| .osu 渲染器（mode 3, 4K） | `MappingIr/Rendering/ManiaOsuRenderer.cs` | 段完整性/对象数/确定性测试 |
+| 端到端管线 + CLI 演示 | `MappingIr/MappingIrPipeline.cs` + `tools/mapping-ir-demo/` | demo：3 段 → 1840 对象 → valid=True alignment=1.0 deterministic=True |
+| 测试 | `tests/AiStudio.Core.MappingIr.Tests/` | **43/43 通过**；既有四模式 179 用例无回归 |
+
+**后续路线**（详见 `docs/new plan/implementation/PLAN.md` §8）：MVP-B = Difficulty 校准闭环（官方 ManiaDifficultyCalculator 迭代 → 目标 SR ±0.3★）；MVP-C = LLM Mapping Planner 替换（`IMappingPlanner` 接口就绪）；MVP-D = Standard Pattern Provider + 2D 几何渲染；Copilot 三粒度建议。
 
 ---
 

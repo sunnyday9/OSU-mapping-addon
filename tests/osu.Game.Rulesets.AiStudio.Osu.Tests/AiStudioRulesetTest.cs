@@ -51,7 +51,9 @@ public class AiStudioRulesetTest
     {
         var assistant = ruleset.CreateAllMods().OfType<AiStudioAssistantMod>().Single();
         Assert.That(assistant.Ranked, Is.False);
+#pragma warning disable CS0618 // Mod.ScoreMultiplier is obsolete; test asserts legacy compatibility shim still returns 1
         Assert.That(assistant.ScoreMultiplier, Is.EqualTo(1));
+#pragma warning restore CS0618
     }
 
     [Test]

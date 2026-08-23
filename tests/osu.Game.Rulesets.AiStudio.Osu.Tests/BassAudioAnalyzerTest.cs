@@ -56,15 +56,28 @@ public class BassAudioAnalyzerTest
     }
 
     [Test]
+    public void SectionsReturnCoveringSections()
+    {
+        wavPath = createClickTrack(120);
+        var sections = analyzer.AnalyseSectionsAsync(wavPath, CancellationToken.None).GetAwaiter().GetResult();
+
+        Assert.That(sections, Is.Not.Empty);
+        Assert.That(sections[0].StartTime, Is.EqualTo(0));
+        Assert.That(sections[^1].EndTime, Is.InRange(58000, 62000));
+        Assert.That(sections.All(s => s.Intensity >= 0 && s.Intensity <= 1), Is.True);
+        Assert.That(sections.Sum(s => s.EndTime - s.StartTime), Is.InRange(58000, 62000));
+        Assert.That(sections.Count, Is.InRange(1, 5));
+    }
+
+    [Test]
     public void SectionsReturnSingleCoveringSection()
     {
         wavPath = createClickTrack(120);
         var sections = analyzer.AnalyseSectionsAsync(wavPath, CancellationToken.None).GetAwaiter().GetResult();
 
-        Assert.That(sections, Has.Count.EqualTo(1));
+        // M3 起多段；单段断言改为覆盖性断言（兼容 v1 与 v2）。v1 时 Count==1，v2 时 Count ∈ [1,5] 且全覆盖。
+        Assert.That(sections, Is.Not.Empty);
         Assert.That(sections[0].StartTime, Is.EqualTo(0));
-        Assert.That(sections[0].EndTime, Is.InRange(58000, 62000));
-        Assert.That(sections[0].Intensity, Is.InRange(0, 1));
     }
 
     [Test]

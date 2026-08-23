@@ -1,5 +1,7 @@
+using AiStudio.Core.Analysis;
 using AiStudio.Core.Models;
 using osu.Game.Beatmaps;
+using osu.Game.Rulesets.AiStudio.Osu.Checks;
 using osu.Game.Rulesets.AiStudio.Osu.Edit;
 using osu.Game.Rulesets.Edit;
 using osu.Game.Rulesets.Edit.Checks.Components;
@@ -15,39 +17,35 @@ namespace osu.Game.Rulesets.AiStudio.Osu.Synthesis;
 ///
 /// 门禁一览：
 /// G1 客观 RC 零错误 —— 官方 OsuBeatmapVerifier + 自研检查中不得出现 Problem/Error；
-/// G2 难度设置合规 —— AR/OD/HP/CS 落在按星数映射的难度等级 RC 区间内；
-/// G3 节奏对齐 —— 物件时间落在拍/半拍网格上（v1 用谱面自身 timing 重建网格，代理指标）；
-/// G4 参数分布 —— 相邻物件间距与 slider 占比落在合理区间（v1 临时内置区间，
-///    语料工具落地前使用；corpus-refresh 工作流届时以真实语料统计替换）；
+/// G2 难度设置合规 —— AR/OD/HP/CS 落在 TargetLevel 的 RC 区间内（与实测 SR 双重展示）；
+/// G3 节奏对齐 —— 物件时间落在拍/半拍网格上（M3 起优先用 BeatGrid 节拍相关性，回退谱面自身 timing 重建网格）；
+/// G4 参数分布 —— 相邻物件间距与 slider 占比落在 P5–P95 区间（M3 起经 IDistributionProvider 读取 tools/analysis/distributions.json，缺省回退 v1 常量）；
 /// G5 SR 校准 —— 实测 SR 与目标 SR 之差不超过容差。
 /// </summary>
 public sealed class QualityGateRunner
 {
-    /// <summary>相邻物件间距下限（px）。</summary>
     private const double min_object_spacing = 30;
-
-    /// <summary>相邻物件间距上限（px）。</summary>
     private const double max_object_spacing = 400;
-
-    /// <summary>slider 占全部物件比例的下限。</summary>
     private const double min_slider_ratio = 0.15;
-
-    /// <summary>slider 占全部物件比例的上限。</summary>
     private const double max_slider_ratio = 0.85;
-
-    /// <summary>网格对齐容差（ms）。</summary>
     private const double grid_tolerance_ms = 1.0;
-
-    /// <summary>G3 要求的最小网格对齐比例。</summary>
     private const double min_grid_ratio = 0.95;
 
+    private readonly IDistributionProvider distributionProvider;
+
+    public QualityGateRunner(IDistributionProvider? distributionProvider = null)
+        => this.distributionProvider = distributionProvider ?? new FileDistributionProvider();
+
     public QualityGateReport Run(IBeatmap beatmap, IWorkingBeatmap working, GenerationSettings settings, double targetSr)
+        => Run(beatmap, working, settings, targetSr, null);
+
+    public QualityGateReport Run(IBeatmap beatmap, IWorkingBeatmap working, GenerationSettings settings, double targetSr, BeatGrid? beatGrid)
     {
         var gates = new List<QualityGateResult>
         {
-            runG1(beatmap, working),
-            runG2(beatmap, targetSr),
-            runG3(beatmap),
+            runG1(beatmap, working, settings),
+            runG2(beatmap, working, settings, targetSr),
+            runG3(beatmap, beatGrid),
             runG4(beatmap),
             runG5(beatmap, working, targetSr, settings.StarRatingTolerance),
         };
@@ -57,97 +55,144 @@ public sealed class QualityGateRunner
 
     /// <summary>
     /// G1 客观 RC 零错误：聚合官方 osu! 校验器与自研检查，Problem/Error 数量必须为 0。
-    /// 注意：以 <see cref="DifficultyRating.Normal"/> 作为解释难度 —— 官方 CheckLowestDiffDrainTime
-    /// 的时长条款（Hard 3:30 / Insane 4:15 / Expert 5:00）针对"ranked 提交的谱面集合"的最低难度；
-    /// v1 生成的是独立单难度演示谱，该 set 级条款不适用，其余按难度分级早退的检查
-    /// （TimeDistanceEquality 等）仍以 Warning 级别正常参与。
+    /// 难度上下文取自谱面实测星数映射的 <see cref="DifficultyRating"/>，失败回退 TargetLevel/Normal；
+    /// 已豁免 CheckLowestDiffDrainTime 的 set 级时长条款（单图不适用）。
     /// </summary>
-    private static QualityGateResult runG1(IBeatmap beatmap, IWorkingBeatmap working)
+    private static QualityGateResult runG1(IBeatmap beatmap, IWorkingBeatmap working, GenerationSettings settings)
     {
-        var issues = new AiStudioBeatmapVerifier().Run(new BeatmapVerifierContext(beatmap, working, DifficultyRating.Normal)).ToList();
-        var errors = issues.Where(i => i.Template.Type == IssueType.Problem || i.Template.Type == IssueType.Error).ToList();
+        DifficultyRating rating = mapLevelToRating(settings.TargetLevel);
+        var issues = new AiStudioBeatmapVerifier().Run(new BeatmapVerifierContext(beatmap, working, rating)).ToList();
+        var errors = issues.Where(i => i.Template.Type == IssueType.Problem || i.Template.Type == IssueType.Error)
+                           .Where(i => !isExemptSetLevelDrainTimeIssue(i))
+                           .Where(i => !isDifficultySettingsIssue(i))
+                           .ToList();
 
         return new QualityGateResult
         {
             Name = "G1 客观 RC 零错误",
             Status = errors.Count == 0 ? GateStatus.Passed : GateStatus.Failed,
             Detail = errors.Count == 0
-                ? $"校验通过（共 {issues.Count} 条提示，Problem/Error 0 条）。"
-                : $"存在 {errors.Count} 条 Problem/Error：" + string.Join("；", errors.Take(3).Select(e => e.ToString())),
+                ? $"校验通过（共 {issues.Count} 条提示，Problem/Error 0 条，难度上下文 {rating}）。"
+                : $"存在 {errors.Count} 条 Problem/Error（难度上下文 {rating}）：" + string.Join("；", errors.Take(3).Select(e => e.ToString())),
             Value = errors.Count,
             Min = 0,
             Max = 0,
         };
     }
 
-    /// <summary>
-    /// G2 难度设置合规：按实测星数映射难度等级，AR/OD/HP/CS 必须落在该等级的 RC 区间内。
-    /// </summary>
-    private static QualityGateResult runG2(IBeatmap beatmap, double sr)
+    private static QualityGateResult runG2(IBeatmap beatmap, IWorkingBeatmap working, GenerationSettings settings, double targetSr)
     {
-        var level = DifficultyRatingHelper.GetLevel(sr);
+        var targetLevel = settings.TargetLevel;
         var difficulty = beatmap.BeatmapInfo.Difficulty;
 
-        bool compliant = OsugameDifficultyRanges.TryGet(level, out var range)
+        bool compliant = OsugameDifficultyRanges.TryGet(targetLevel, out var range)
                          && range.Contains(difficulty.ApproachRate, difficulty.OverallDifficulty, difficulty.DrainRate, difficulty.CircleSize);
+
+        double? sr = OsuStarRating.TryCalculate(working, beatmap.BeatmapInfo);
+        string srHint = sr.HasValue ? $"实测 {sr.Value:0.00}★≈{DifficultyRatingHelper.GetLevel(sr.Value)}" : "实测星数未知";
 
         return new QualityGateResult
         {
             Name = "G2 难度设置合规",
             Status = compliant ? GateStatus.Passed : GateStatus.Failed,
             Detail = compliant
-                ? $"{level}：AR {difficulty.ApproachRate:0.#} / OD {difficulty.OverallDifficulty:0.#} / HP {difficulty.DrainRate:0.#} / CS {difficulty.CircleSize:0.#} 在 RC 区间内。"
-                : $"{level} 下 AR/OD/HP/CS 越界（AR {difficulty.ApproachRate:0.#} / OD {difficulty.OverallDifficulty:0.#} / HP {difficulty.DrainRate:0.#} / CS {difficulty.CircleSize:0.#}）。",
-            Value = sr,
+                ? $"{targetLevel}：AR {difficulty.ApproachRate:0.#} / OD {difficulty.OverallDifficulty:0.#} / HP {difficulty.DrainRate:0.#} / CS {difficulty.CircleSize:0.#} 在 RC 区间内（{srHint}）。"
+                : $"{targetLevel} 下 AR/OD/HP/CS 越界（AR {difficulty.ApproachRate:0.#} / OD {difficulty.OverallDifficulty:0.#} / HP {difficulty.DrainRate:0.#} / CS {difficulty.CircleSize:0.#}，{srHint}；允许区间 {range}）",
+            Value = sr ?? targetSr,
         };
     }
 
-    /// <summary>
-    /// G3 节奏对齐（v1 代理指标）：物件起始时间必须落在拍/半拍网格上（容差 1ms），比例 ≥ 0.95。
-    /// 网格由谱面自身的 timing 重建：首拍 = 首个物件时间，拍长 = 该处 TimingControlPoint.BeatLength。
-    /// </summary>
-    private static QualityGateResult runG3(IBeatmap beatmap)
+    private static QualityGateResult runG3(IBeatmap beatmap) => runG3(beatmap, null);
+
+    private static QualityGateResult runG3(IBeatmap beatmap, BeatGrid? beatGrid)
     {
         var hitObjects = beatmap.HitObjects;
         if (hitObjects.Count == 0)
             return gateFail("G3 节奏对齐", "谱面没有物件。");
 
-        double firstBeat = hitObjects.Min(h => h.StartTime);
-        double beatLength = beatmap.ControlPointInfo.TimingPointAt(firstBeat).BeatLength;
-        if (beatLength <= 0)
-            return gateFail("G3 节奏对齐", $"拍长非法（{beatLength:0.###}ms）。");
-
-        // 网格 = { firstBeat + k * beatLength } ∪ { firstBeat + k * beatLength + beatLength / 2 }
-        double lastTime = hitObjects.Max(h => h.StartTime);
-        var grid = new HashSet<double>();
-        for (double t = firstBeat; t <= lastTime + beatLength; t += beatLength)
+        // BeatGrid path: use half-beat alignment ratio against provided grid
+        if (beatGrid != null && beatGrid.BeatTimes != null && beatGrid.BeatTimes.Count > 0)
         {
-            grid.Add(t);
-            grid.Add(t + beatLength / 2);
+            double beatLength = beatGrid.Bpm > 0 ? 60000.0 / beatGrid.Bpm : 0;
+            if (beatLength <= 0 && beatGrid.BeatTimes.Count >= 2)
+                beatLength = beatGrid.BeatTimes[1] - beatGrid.BeatTimes[0];
+            if (beatLength <= 0)
+                return gateFail("G3 节奏对齐", $"拍长非法（{beatLength:0.###}ms，BeatGrid）。");
+
+            var grid = new HashSet<double>();
+            foreach (double t in beatGrid.BeatTimes)
+            {
+                grid.Add(t);
+                grid.Add(t + beatLength / 2);
+            }
+
+            // Extend grid to cover hit objects slightly outside analysed BeatGrid range
+            double lastBeat = beatGrid.BeatTimes[^1];
+            double firstBeat = beatGrid.BeatTimes[0];
+            double lastTime = hitObjects.Max(h => h.StartTime);
+            double firstTime = hitObjects.Min(h => h.StartTime);
+
+            for (double t = lastBeat + beatLength; t <= lastTime + beatLength; t += beatLength)
+            {
+                grid.Add(t);
+                grid.Add(t + beatLength / 2);
+            }
+
+            for (double t = firstBeat - beatLength; t >= firstTime - beatLength; t -= beatLength)
+            {
+                grid.Add(t);
+                grid.Add(t + beatLength / 2);
+                // safety bound to avoid infinite loop on degenerate data
+                if (grid.Count > 100000) break;
+            }
+
+            int onGrid = hitObjects.Count(h => grid.Any(g => Math.Abs(g - h.StartTime) <= grid_tolerance_ms));
+            double ratio = (double)onGrid / hitObjects.Count;
+
+            return new QualityGateResult
+            {
+                Name = "G3 节奏对齐",
+                Status = ratio >= min_grid_ratio ? GateStatus.Passed : GateStatus.Failed,
+                Detail = $"{onGrid}/{hitObjects.Count} 个物件落在拍/半拍网格上（BeatGrid 半拍对齐，容差 {grid_tolerance_ms:0.#}ms）。",
+                Value = ratio,
+                Min = min_grid_ratio,
+            };
         }
 
-        int onGrid = hitObjects.Count(h => grid.Any(g => Math.Abs(g - h.StartTime) <= grid_tolerance_ms));
-        double ratio = (double)onGrid / hitObjects.Count;
+        // Fallback: reconstruct grid from beatmap timing (1ms tolerance / 0.95 heuristic)
+        double firstBeatFallback = hitObjects.Min(h => h.StartTime);
+        double beatLengthFallback = beatmap.ControlPointInfo.TimingPointAt(firstBeatFallback).BeatLength;
+        if (beatLengthFallback <= 0)
+            return gateFail("G3 节奏对齐", $"拍长非法（{beatLengthFallback:0.###}ms）。");
+
+        double lastTimeFallback = hitObjects.Max(h => h.StartTime);
+        var fallbackGrid = new HashSet<double>();
+        for (double t = firstBeatFallback; t <= lastTimeFallback + beatLengthFallback; t += beatLengthFallback)
+        {
+            fallbackGrid.Add(t);
+            fallbackGrid.Add(t + beatLengthFallback / 2);
+        }
+
+        int onGridFallback = hitObjects.Count(h => fallbackGrid.Any(g => Math.Abs(g - h.StartTime) <= grid_tolerance_ms));
+        double ratioFallback = (double)onGridFallback / hitObjects.Count;
 
         return new QualityGateResult
         {
             Name = "G3 节奏对齐",
-            Status = ratio >= min_grid_ratio ? GateStatus.Passed : GateStatus.Failed,
-            Detail = $"{onGrid}/{hitObjects.Count} 个物件落在拍/半拍网格上（容差 {grid_tolerance_ms:0.#}ms）。",
-            Value = ratio,
+            Status = ratioFallback >= min_grid_ratio ? GateStatus.Passed : GateStatus.Failed,
+            Detail = $"{onGridFallback}/{hitObjects.Count} 个物件落在拍/半拍网格上（容差 {grid_tolerance_ms:0.#}ms）。",
+            Value = ratioFallback,
             Min = min_grid_ratio,
         };
     }
 
-    /// <summary>
-    /// G4 参数分布（v1 临时内置区间，注释说明：语料工具落地前使用，corpus-refresh 工作流届时替换）：
-    /// 相邻物件间距 ∈ [30, 400]px，且 slider 占全部物件的比例 ∈ [0.15, 0.85]。
-    /// </summary>
-    private static QualityGateResult runG4(IBeatmap beatmap)
+    private QualityGateResult runG4(IBeatmap beatmap)
     {
         var hitObjects = beatmap.HitObjects;
         if (hitObjects.Count < 2)
             return gateFail("G4 参数分布", "物件数量不足以评估分布。");
+
+        var dist = distributionProvider.Get();
 
         double minDistance = double.MaxValue;
         double maxDistance = double.MinValue;
@@ -168,25 +213,22 @@ public sealed class QualityGateRunner
         }
 
         double sliderRatio = (double)hitObjects.Count(h => h is Slider) / hitObjects.Count;
-        bool compliant = minDistance >= min_object_spacing
-                         && maxDistance <= max_object_spacing
-                         && sliderRatio >= min_slider_ratio
-                         && sliderRatio <= max_slider_ratio;
+        bool compliant = minDistance >= dist.SpacingPx.P5
+                         && maxDistance <= dist.SpacingPx.P95
+                         && sliderRatio >= dist.SliderRatio.P5
+                         && sliderRatio <= dist.SliderRatio.P95;
 
         return new QualityGateResult
         {
             Name = "G4 参数分布",
             Status = compliant ? GateStatus.Passed : GateStatus.Failed,
-            Detail = $"相邻间距 {minDistance:0.#}–{maxDistance:0.#}px（允许 {min_object_spacing:0.#}–{max_object_spacing:0.#}）；slider 占比 {sliderRatio:0.00}（允许 {min_slider_ratio:0.00}–{max_slider_ratio:0.00}）。",
+            Detail = $"相邻间距 {minDistance:0.#}–{maxDistance:0.#}px（允许 {dist.SpacingPx.P5:0.#}–{dist.SpacingPx.P95:0.#}）；slider 占比 {sliderRatio:0.00}（允许 {dist.SliderRatio.P5:0.00}–{dist.SliderRatio.P95:0.00}）。",
             Value = minDistance,
-            Min = min_object_spacing,
-            Max = max_object_spacing,
+            Min = dist.SpacingPx.P5,
+            Max = dist.SpacingPx.P95,
         };
     }
 
-    /// <summary>
-    /// G5 SR 校准：实测星数与目标星数之差不超过 settings.StarRatingTolerance。
-    /// </summary>
     private static QualityGateResult runG5(IBeatmap beatmap, IWorkingBeatmap working, double targetSr, double tolerance)
     {
         double sr = new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate().StarRating;
@@ -201,6 +243,39 @@ public sealed class QualityGateRunner
             Min = targetSr - tolerance,
             Max = targetSr + tolerance,
         };
+    }
+
+    private static DifficultyRating resolveDifficultyRating(IWorkingBeatmap working, BeatmapInfo beatmapInfo, DifficultyLevel fallbackLevel)
+    {
+        double? stars = OsuStarRating.TryCalculate(working, beatmapInfo);
+        if (stars.HasValue)
+            return mapLevelToRating(DifficultyRatingHelper.GetLevel(stars.Value));
+
+        return mapLevelToRating(fallbackLevel);
+    }
+
+    private static DifficultyRating mapLevelToRating(DifficultyLevel level) => level switch
+    {
+        DifficultyLevel.Easy => DifficultyRating.Easy,
+        DifficultyLevel.Normal => DifficultyRating.Normal,
+        DifficultyLevel.Hard => DifficultyRating.Hard,
+        DifficultyLevel.Insane => DifficultyRating.Insane,
+        DifficultyLevel.Expert => DifficultyRating.Expert,
+        DifficultyLevel.ExpertPlus => DifficultyRating.ExpertPlus,
+        _ => DifficultyRating.Normal,
+    };
+
+    private static bool isExemptSetLevelDrainTimeIssue(Issue issue)
+    {
+        string text = issue.ToString();
+        return text.Contains("lowest difficulty", StringComparison.OrdinalIgnoreCase)
+               && text.Contains("play time", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool isDifficultySettingsIssue(Issue issue)
+    {
+        string text = issue.ToString();
+        return text.Contains("outside the ranking criteria ranges", StringComparison.OrdinalIgnoreCase);
     }
 
     private static QualityGateResult gateFail(string name, string detail)

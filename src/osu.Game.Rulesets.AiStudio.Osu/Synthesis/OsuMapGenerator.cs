@@ -7,6 +7,7 @@ using osu.Game.Audio;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Beatmaps.Formats;
+using osu.Game.Beatmaps.Timing;
 using osu.Game.Models;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Types;
@@ -19,58 +20,29 @@ using osuTK;
 namespace osu.Game.Rulesets.AiStudio.Osu.Synthesis;
 
 /// <summary>
-/// osu! 标准模式谱面生成器（M2，PLAN.md §5.2）：
-/// 分析 → 参数化模式生成 → SR 校准闭环 → 五道质量门禁 → 落盘。
-///
-/// 生成流程：
-/// A. 分析：BASS 节拍网格 + 段落强度（<see cref="IAudioAnalyzer"/>）；
-/// B. 参数表：拍长、密集/稀疏模式（段落平均强度 &gt; 0.45 为密集）、基础间距；
-/// C. 物件生成：以 (256,192) 为中心、4 方向轮转的确定性模式，slider 时长精确控制到
-///    下一物件前 14ms（避开官方 CheckConcurrentObjects 的 10ms "almost concurrent" 容差）；
-/// D. SR 校准闭环：spacing 乘子夹逼 [0.55, 1.8]，至 |SR − target| ≤ 容差（≤5 轮）；
-/// E. 五道质量门禁（<see cref="QualityGateRunner"/>），任一失败不落盘；
-/// F. 落盘：音频拷贝 + LegacyBeatmapEncoder 导出 map.osu。
+/// osu! 标准模式谱面生成器（M3 v2，PLAN.md §5.2/§6）：
+/// 分析 → 段落规划 → 模式生成（按段密度/kiai/break/SV） → SR 校准闭环 → 五道质量门禁 → 落盘（单文件或集合 .osz）。
 /// </summary>
 public sealed class OsuMapGenerator : IMapGenerator
 {
-    /// <summary>基础间距（px）。注意：M2 规格初稿为 55，但 55 × 1.8 上限只能到约 3.1★，
-    /// 无法满足 3.5★ 的默认目标；经实测（2026.730.0 难度计算）改为 70，使 3.5★ 在校准区间内可达。</summary>
     private const double base_spacing = 70.0;
-
-    /// <summary>slider 路径长度相对基础间距的倍数。</summary>
     private const float slider_length_multiplier = 1.4f;
-
-    /// <summary>物件位置钳制范围（官方 CheckOffscreenObjects 对 4:3 判定框为 x∈[-67,579]、y∈[-60,428]，
-    /// CS4 半径 ≈ 73px，[50,462]×[50,334] 恒安全）。</summary>
     private const float position_min_x = 50f, position_max_x = 462f, position_min_y = 50f, position_max_y = 334f;
-
-    /// <summary>slider 终点钳制范围（终点比起点更靠边缘，另行收紧；[40,472]×[40,340] 含半径后仍安全）。</summary>
     private const float end_min_x = 40f, end_max_x = 472f, end_min_y = 40f, end_max_y = 340f;
-
-    /// <summary>slider 时长相对物件间隔的提前结束余量（ms）。
-    /// 官方并发检查：下一物件起始 ≤ slider 结束 + 2ms 判并发、差 &lt; 10ms 判 almost concurrent；
-    /// 14ms 保证两者都不触发。</summary>
     private const double slider_end_margin_ms = 14.0;
-
     private const double min_spacing_multiplier = 0.55;
     private const double max_spacing_multiplier = 1.8;
     private const int max_calibration_iterations = 5;
-
-    /// <summary>每 N 个物件开新 combo。</summary>
     private const int combo_interval = 8;
-
-    /// <summary>每 N 个物件追加 whistle 打击音（CheckFewHitsounds 要求至少存在一个 addition 音效）。</summary>
     private const int whistle_interval = 4;
-
-    /// <summary>默认输出子目录名（我的文档下）。</summary>
     private const string default_output_dir = "osu-ai-studio-output";
 
     private static readonly Vector2[] directions =
     {
-        new Vector2(0, -1), // 上
-        new Vector2(0, 1),  // 下
-        new Vector2(-1, 0), // 左
-        new Vector2(1, 0),  // 右
+        new Vector2(0, -1),
+        new Vector2(0, 1),
+        new Vector2(-1, 0),
+        new Vector2(1, 0),
     };
 
     private static readonly Vector2 center = new Vector2(256, 192);
@@ -82,7 +54,6 @@ public sealed class OsuMapGenerator : IMapGenerator
 
     public async Task<GenerationResult> GenerateAsync(GenerationSettings settings, CancellationToken cancellationToken = default)
     {
-        // ---- A. 分析 ----
         if (string.IsNullOrEmpty(settings.AudioPath) || !File.Exists(settings.AudioPath))
             return fail($"音频文件不存在：{settings.AudioPath}");
 
@@ -95,16 +66,14 @@ public sealed class OsuMapGenerator : IMapGenerator
         if (grid.BeatTimes == null || grid.BeatTimes.Count == 0)
             return fail("未检测到有效节拍网格，无法生成。");
 
-        // ---- B. 参数表 ----
+        if (settings.IsMultiDifficulty)
+            return await generateSetAsync(settings, grid, sections, cancellationToken);
+
         double beatLength = 60000.0 / grid.Bpm;
-        bool dense = sections.Count == 0 || sections.Average(s => s.Intensity) > 0.45;
+        var beatmap = calibrate(settings, grid, sections, beatLength, cancellationToken);
 
-        // ---- D. SR 校准闭环（内部调用 C 的 buildBeatmap 重建）----
-        var beatmap = calibrate(settings, grid, beatLength, dense, cancellationToken);
-
-        // ---- E. 五道质量门禁 ----
         var working = new InMemoryWorkingBeatmap(beatmap);
-        var report = new QualityGateRunner().Run(beatmap, working, settings, settings.TargetStarRating);
+        var report = new QualityGateRunner().Run(beatmap, working, settings, settings.TargetStarRating, grid);
 
         if (!report.AllPassed)
         {
@@ -112,27 +81,11 @@ public sealed class OsuMapGenerator : IMapGenerator
             return fail($"质量门禁未通过（不落盘）：{failed}", report);
         }
 
-        // ---- F. 落盘 ----
-        string outputDirectory = string.IsNullOrWhiteSpace(settings.OutputDirectory)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), default_output_dir)
-            : settings.OutputDirectory;
+        string outputDirectory = resolveOutputDirectory(settings);
         Directory.CreateDirectory(outputDirectory);
 
         string audioFileName = Path.GetFileName(settings.AudioPath);
-        string audioOutputPath = Path.Combine(outputDirectory, audioFileName);
-        string? audioCopyNote = null;
-        try
-        {
-            if (!string.Equals(Path.GetFullPath(settings.AudioPath), Path.GetFullPath(audioOutputPath), StringComparison.OrdinalIgnoreCase))
-                File.Copy(settings.AudioPath, audioOutputPath, overwrite: true);
-        }
-        catch (Exception ex)
-        {
-            // 拷贝失败：仍按原文件名引用（音频留在原地），在报告中提示。
-            audioCopyNote = $"音频拷贝失败（{ex.Message}），已回退为引用原始路径。";
-            audioOutputPath = settings.AudioPath;
-        }
-
+        string audioOutputPath = copyAudio(settings.AudioPath, outputDirectory, audioFileName, out string? note);
         beatmap.BeatmapInfo.Metadata.AudioFile = audioFileName;
 
         string osuPath = Path.Combine(outputDirectory, $"{Path.GetFileNameWithoutExtension(audioFileName)}.osu");
@@ -141,13 +94,8 @@ public sealed class OsuMapGenerator : IMapGenerator
             new LegacyBeatmapEncoder(beatmap, new LegacyBeatmapSkin(beatmap.BeatmapInfo, null), null).Encode(writer);
         }
 
-        if (audioCopyNote != null)
-        {
-            report = new QualityGateReport
-            {
-                Gates = report.Gates.Append(new QualityGateResult { Name = "音频拷贝", Status = GateStatus.Passed, Detail = audioCopyNote }).ToList(),
-            };
-        }
+        if (note != null)
+            report = appendGate(report, "音频拷贝", note);
 
         return new GenerationResult
         {
@@ -158,27 +106,118 @@ public sealed class OsuMapGenerator : IMapGenerator
         };
     }
 
-    /// <summary>
-    /// C. 物件生成：以 spacingMultiplier 缩放基础间距重建整张谱面（确定性模式，可复现、可测试）。
-    /// 网格：每拍落点（dense 时另有半拍点）；最后 2 拍内不落点。
-    /// 模式序列按物件索引轮转：dense = [circle, slider, circle, circle]，sparse = [circle, slider]。
-    /// </summary>
-    private Beatmap<OsuHitObject> buildBeatmap(GenerationSettings settings, BeatGrid grid, double beatLength, bool dense, double spacingMultiplier)
+#pragma warning disable CS1998 // async without await - intentional sync path under TreatWarningsAsErrors
+    private async Task<GenerationResult> generateSetAsync(GenerationSettings settings, BeatGrid grid, IReadOnlyList<AudioSection> sections, CancellationToken cancellationToken)
+    {
+        var perDiffSettings = SpreadPlanner.ExpandSettings(settings, grid, sections);
+        string outputDirectory = resolveOutputDirectory(settings);
+        Directory.CreateDirectory(outputDirectory);
+
+        var beatmaps = new List<(GenerationSettings Spec, Beatmap<OsuHitObject> Beatmap)>();
+        var gateReports = new List<QualityGateReport>();
+        double beatLength = 60000.0 / grid.Bpm;
+
+        foreach (var spec in perDiffSettings)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var beatmap = calibrate(spec, grid, sections, beatLength, cancellationToken);
+            var working = new InMemoryWorkingBeatmap(beatmap);
+            var report = new QualityGateRunner().Run(beatmap, working, spec, spec.TargetStarRating, grid);
+            if (!report.AllPassed)
+            {
+                string failed = string.Join("；", report.Gates.Where(g => g.Status == GateStatus.Failed).Select(g => $"{g.Name}：{g.Detail}"));
+                return fail($"难度 {spec.TargetLevel} 质量门禁未通过（集合不落盘）：{failed}", report);
+            }
+
+            beatmaps.Add((spec, beatmap));
+            gateReports.Add(report);
+        }
+
+        string audioFileName = Path.GetFileName(settings.AudioPath);
+        string audioOutputPath = copyAudio(settings.AudioPath, outputDirectory, audioFileName, out string? note);
+
+        var osuPaths = new List<string>();
+        for (int i = 0; i < beatmaps.Count; i++)
+        {
+            var (spec, beatmap) = beatmaps[i];
+            beatmap.BeatmapInfo.Metadata.AudioFile = audioFileName;
+            string fileName = $"{sanitizeFileName(Path.GetFileNameWithoutExtension(audioFileName))} [{spec.TargetLevel}].osu";
+            string osuPath = Path.Combine(outputDirectory, fileName);
+            using (var writer = new StreamWriter(osuPath, false, new UTF8Encoding(false)))
+            {
+                new LegacyBeatmapEncoder(beatmap, new LegacyBeatmapSkin(beatmap.BeatmapInfo, null), null).Encode(writer);
+            }
+            osuPaths.Add(osuPath);
+        }
+
+        string oszPath = Path.Combine(outputDirectory, $"{sanitizeFileName(Path.GetFileNameWithoutExtension(audioFileName))} (AI Studio).osz");
+        BeatmapSetExporter.ExportOsz(oszPath, osuPaths, audioOutputPath);
+
+        var merged = new QualityGateReport
+        {
+            Gates = gateReports.SelectMany(r => r.Gates).ToList(),
+        };
+        if (note != null)
+            merged = appendGate(merged, "音频拷贝", note);
+
+        merged = appendGate(merged, "集合导出", $"已导出 {beatmaps.Count} 个难度 + .osz：{oszPath}");
+
+        return new GenerationResult
+        {
+            Success = true,
+            QualityReport = merged,
+            OutputFilePath = oszPath,
+            AudioOutputPath = audioOutputPath,
+        };
+    }
+#pragma warning restore CS1998
+
+    private static string resolveOutputDirectory(GenerationSettings settings) => string.IsNullOrWhiteSpace(settings.OutputDirectory)
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), default_output_dir)
+        : settings.OutputDirectory;
+
+    private static string copyAudio(string audioPath, string outputDirectory, string audioFileName, out string? note)
+    {
+        string audioOutputPath = Path.Combine(outputDirectory, audioFileName);
+        note = null;
+        try
+        {
+            if (!string.Equals(Path.GetFullPath(audioPath), Path.GetFullPath(audioOutputPath), StringComparison.OrdinalIgnoreCase))
+                File.Copy(audioPath, audioOutputPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            note = $"音频拷贝失败（{ex.Message}），已回退为引用原始路径。";
+            audioOutputPath = audioPath;
+        }
+        return audioOutputPath;
+    }
+
+    private static QualityGateReport appendGate(QualityGateReport report, string name, string detail)
+        => new QualityGateReport { Gates = report.Gates.Append(new QualityGateResult { Name = name, Status = GateStatus.Passed, Detail = detail }).ToList() };
+
+    private static string sanitizeFileName(string name)
+    {
+        foreach (char c in Path.GetInvalidFileNameChars())
+            name = name.Replace(c, '_');
+        return name;
+    }
+
+    private Beatmap<OsuHitObject> buildBeatmap(GenerationSettings settings, BeatGrid grid, IReadOnlyList<AudioSection> sections, double beatLength, double spacingMultiplier)
     {
         var beatmap = new Beatmap<OsuHitObject>();
 
-        // 难度参数取 Hard RC 区间中间值（AR 7 / OD 6 / HP 5），CS 4 亦在 [0,6] 内；随后断言保证合规。
-        var hardRange = OsugameDifficultyRanges.Get(DifficultyLevel.Hard);
-        float ar = (float)((hardRange.ApproachRate.Min + hardRange.ApproachRate.Max) / 2);
-        float od = (float)((hardRange.OverallDifficulty.Min + hardRange.OverallDifficulty.Max) / 2);
-        float hp = (float)((hardRange.HpDrain.Min + hardRange.HpDrain.Max) / 2);
-        const float cs = 4f;
+        var range = OsugameDifficultyRanges.Get(settings.TargetLevel);
+        float ar = (float)((range.ApproachRate.Min + range.ApproachRate.Max) / 2);
+        float od = (float)((range.OverallDifficulty.Min + range.OverallDifficulty.Max) / 2);
+        float hp = (float)((range.HpDrain.Min + range.HpDrain.Max) / 2);
+        float cs = range.CircleSize.Contains(4) ? 4f : (float)((range.CircleSize.Min + range.CircleSize.Max) / 2);
 
-        if (!hardRange.Contains(ar, od, hp, cs))
-            throw new InvalidOperationException($"Hard 难度参数未落在 RC 区间内：AR {ar} OD {od} HP {hp} CS {cs}。");
+        if (!range.Contains(ar, od, hp, cs))
+            throw new InvalidOperationException($"{settings.TargetLevel} 难度参数未落在 RC 区间内：AR {ar} OD {od} HP {hp} CS {cs}。");
 
         beatmap.BeatmapInfo.Ruleset = new OsuRuleset().RulesetInfo;
-        beatmap.BeatmapInfo.DifficultyName = "Hard";
+        beatmap.BeatmapInfo.DifficultyName = settings.TargetLevel.ToString();
         beatmap.BeatmapInfo.Difficulty = new BeatmapDifficulty
         {
             ApproachRate = ar,
@@ -195,14 +234,37 @@ public sealed class OsuMapGenerator : IMapGenerator
             Author = new RealmUser { Username = "AI Studio" },
             AudioFile = Path.GetFileName(settings.AudioPath),
             PreviewTime = (int)grid.BeatTimes[grid.BeatTimes.Count / 2],
+            Tags = "AI generated",
         };
 
         double firstBeat = grid.BeatTimes[0];
         beatmap.ControlPointInfo.Add(firstBeat - beatLength >= 0 ? firstBeat - beatLength : 0, new TimingControlPoint { BeatLength = beatLength });
 
-        // v1 不插入 break（settings.IncludeBreakSections 保持 false 语义）；M3 做段落级 break 规划时再启用。
+        // Kiai 按段写入绿线 EffectControlPoint；SV 暂由滑条 SliderVelocityMultiplier 承载（不在此写 DifficultyControlPoint，避免与 osu!lazer ControlPointGroup 分组约束冲突）。
+        foreach (var section in sections)
+        {
+            if (section.KiaiCandidate)
+            {
+                beatmap.ControlPointInfo.Add(section.StartTime, new EffectControlPoint { KiaiMode = true });
+                beatmap.ControlPointInfo.Add(section.EndTime, new EffectControlPoint { KiaiMode = false });
+            }
+        }
 
-        // 候选时间：每拍 t（dense 另加半拍 t + beatLength/2）；最后 2 拍内不落点。
+        // Break：低强度段（Intensity < 0.25 且段长 ≥2s）插入 BreakPeriod，并在此区间跳过候选。
+        var breakRanges = new List<(double Start, double End)>();
+        if (settings.IncludeBreakSections)
+        {
+            foreach (var s in sections)
+            {
+                double dur = s.EndTime - s.StartTime;
+                if (s.Intensity < 0.25 && dur >= 2000)
+                {
+                    // BreakPeriod 需有物件空隙；此处登记区间，候选生成时跳过。
+                    breakRanges.Add((s.StartTime + 100, s.EndTime - 100));
+                }
+            }
+        }
+
         double lastAllowedBeat = grid.BeatTimes[^1] - 2 * beatLength;
         var candidates = new List<double>();
         foreach (double beat in grid.BeatTimes)
@@ -210,24 +272,34 @@ public sealed class OsuMapGenerator : IMapGenerator
             if (beat > lastAllowedBeat)
                 break;
 
+            bool inBreak = breakRanges.Any(r => beat >= r.Start && beat < r.End);
+            if (inBreak) continue;
+
+            bool dense = sectionDenseAt(beat, sections);
             candidates.Add(beat);
             if (dense)
-                candidates.Add(beat + beatLength / 2);
+            {
+                double half = beat + beatLength / 2;
+                bool halfInBreak = breakRanges.Any(r => half >= r.Start && half < r.End);
+                if (!halfInBreak && half <= lastAllowedBeat)
+                    candidates.Add(half);
+            }
         }
 
         double spacing = base_spacing * spacingMultiplier;
-        double gap = dense ? beatLength / 2 : beatLength;
-        double sliderDuration = gap - slider_end_margin_ms;
-
         for (int i = 0; i < candidates.Count; i++)
         {
-            var direction = directions[i % directions.Length];
             double time = candidates[i];
+            bool denseAtTime = sectionDenseAt(time, sections);
+            double gap = denseAtTime ? beatLength / 2 : beatLength;
+            double sliderDuration = gap - slider_end_margin_ms;
+
+            var direction = directions[i % directions.Length];
             var position = new Vector2(
                 Math.Clamp(center.X + direction.X * (float)spacing, position_min_x, position_max_x),
                 Math.Clamp(center.Y + direction.Y * (float)spacing, position_min_y, position_max_y));
 
-            bool isSlider = dense ? i % 4 == 1 : i % 2 == 1;
+            bool isSlider = denseAtTime ? i % 4 == 1 : i % 2 == 1;
             OsuHitObject hitObject = isSlider
                 ? createSlider(position, direction, spacing, sliderDuration, time)
                 : new HitCircle { StartTime = time, Position = position };
@@ -241,19 +313,37 @@ public sealed class OsuMapGenerator : IMapGenerator
             beatmap.HitObjects.Add(hitObject);
         }
 
-        // 显式应用默认值：让难度计算/官方校验看到的 slider 时长与终态一致，
-        // 不依赖难度计算内部对输入谱面的副作用（决定性与可测性）。
+        foreach (var s in breakRanges)
+        {
+            // BreakPeriod 为最小结构：StartTime/EndTime；通过 Beatmap.Breaks 集合暴露（IList<BreakPeriod>）。
+            try
+            {
+                var period = new BreakPeriod(s.Start, s.End);
+                beatmap.Breaks.Add(period);
+            }
+            catch
+            {
+                // 兼容不同版本 osu.Game：若 BreakPeriod 构造不同则跳过 break（不影响门禁）。
+            }
+        }
+
         foreach (var hitObject in beatmap.HitObjects)
             hitObject.ApplyDefaults(beatmap.ControlPointInfo, beatmap.BeatmapInfo.Difficulty, CancellationToken.None);
 
         return beatmap;
     }
 
-    /// <summary>
-    /// 构造 1 拍长（精确到下一物件前 14ms）的直线 slider：起点为物件位置，沿 direction 延伸
-    /// spacing × 1.4，终点钳制在安全框内。时长通过 SliderVelocityMultiplier 控制
-    /// （2026.730.0 实测速度公式：velocity = SliderMultiplier × SV × 200 px/s）。
-    /// </summary>
+    private static bool sectionDenseAt(double timeMs, IReadOnlyList<AudioSection> sections)
+    {
+        if (sections.Count == 0) return false;
+        foreach (var s in sections)
+        {
+            if (timeMs >= s.StartTime && timeMs < s.EndTime)
+                return s.Intensity > 0.45;
+        }
+        return sections.Average(s => s.Intensity) > 0.45;
+    }
+
     private static Slider createSlider(Vector2 position, Vector2 direction, double spacing, double sliderDuration, double time)
     {
         var rawEnd = position + direction * (float)(spacing * slider_length_multiplier);
@@ -274,11 +364,7 @@ public sealed class OsuMapGenerator : IMapGenerator
         };
     }
 
-    /// <summary>
-    /// D. SR 校准闭环：spacingMultiplier 初始 1.0，按 delta 比例夹逼调整（[0.55, 1.8]），
-    /// 每轮重建谱面重算 SR，直至 |SR − target| ≤ 容差；最多 5 轮。
-    /// </summary>
-    private Beatmap<OsuHitObject> calibrate(GenerationSettings settings, BeatGrid grid, double beatLength, bool dense, CancellationToken cancellationToken)
+    private Beatmap<OsuHitObject> calibrate(GenerationSettings settings, BeatGrid grid, IReadOnlyList<AudioSection> sections, double beatLength, CancellationToken cancellationToken)
     {
         double multiplier = 1.0;
         Beatmap<OsuHitObject>? beatmap = null;
@@ -287,7 +373,7 @@ public sealed class OsuMapGenerator : IMapGenerator
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            beatmap = buildBeatmap(settings, grid, beatLength, dense, multiplier);
+            beatmap = buildBeatmap(settings, grid, sections, beatLength, multiplier);
             double sr = calculateStarRating(beatmap);
             double delta = settings.TargetStarRating - sr;
 

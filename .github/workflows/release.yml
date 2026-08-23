@@ -21,40 +21,92 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore
-        run: dotnet restore src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj
+      - name: Restore (4 rulesets)
+        run: |
+          dotnet restore src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj
+          dotnet restore src/osu.Game.Rulesets.AiStudio.Mania/osu.Game.Rulesets.AiStudio.Mania.csproj
+          dotnet restore src/osu.Game.Rulesets.AiStudio.Catch/osu.Game.Rulesets.AiStudio.Catch.csproj
+          dotnet restore src/osu.Game.Rulesets.AiStudio.Taiko/osu.Game.Rulesets.AiStudio.Taiko.csproj
 
       # github.ref_name 形如 v1.2.3，Version 属性需去掉 v 前缀（1.2.3）
-      - name: Build (Release)
-        run: dotnet build src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj -c Release --no-restore -p:Version=$(echo ${{ github.ref_name }} | sed 's/^v//')
+      - name: Build 4 rulesets (Release)
+        run: |
+          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
+          dotnet build src/osu.Game.Rulesets.AiStudio.Osu/osu.Game.Rulesets.AiStudio.Osu.csproj -c Release --no-restore -p:Version="$VERSION"
+          dotnet build src/osu.Game.Rulesets.AiStudio.Mania/osu.Game.Rulesets.AiStudio.Mania.csproj -c Release --no-restore -p:Version="$VERSION"
+          dotnet build src/osu.Game.Rulesets.AiStudio.Catch/osu.Game.Rulesets.AiStudio.Catch.csproj -c Release --no-restore -p:Version="$VERSION"
+          dotnet build src/osu.Game.Rulesets.AiStudio.Taiko/osu.Game.Rulesets.AiStudio.Taiko.csproj -c Release --no-restore -p:Version="$VERSION"
 
-      - name: Create INSTALL.txt
+      - name: Create INSTALL.txt (4 modes)
         run: |
           cat > INSTALL.txt <<'EOF'
           ============================================
-          osu! AI Studio (osu! mode) - ruleset 安装说明
+          osu! AI Studio — 四模式 ruleset 安装说明 (osu!/mania/taiko/catch)
+          版本：$TAG（见 Release 标题）
           ============================================
-          1. 解压本压缩包，得到 osu.Game.Rulesets.AiStudio.Osu.dll 与 INSTALL.txt。
-          2. 将 osu.Game.Rulesets.AiStudio.Osu.dll 放入 osu!lazer 用户目录下的 rulesets/ 文件夹：
-             - Windows: %APPDATA%\osu\rulesets\
-             - Linux:   ~/.local/share/osu/rulesets/
-             - macOS:   ~/Library/Application Support/osu/rulesets/
-          3. 重新启动 osu!lazer，ruleset 会被自动扫描并加载。
-          4. 在游戏内切换 ruleset 为 "osu! AI Studio" 即可游玩。
+          本 Release 包含 4 个独立 ruleset DLL，对应 osu! 四个模式，各为独立插件：
 
-          注意：请保持 dll 文件名不变（osu.Game.Rulesets.AiStudio.Osu.dll），
+            osu.Game.Rulesets.AiStudio.Osu.dll    — osu! 标准模式  (Mode 0)
+            osu.Game.Rulesets.AiStudio.Mania.dll  — mania 模式      (Mode 3)
+            osu.Game.Rulesets.AiStudio.Catch.dll  — catch 模式      (Mode 2)
+            osu.Game.Rulesets.AiStudio.Taiko.dll  — taiko 模式      (Mode 1)
+
+          共享核心 AiStudio.Core 已以源码编译并入各 DLL，无额外依赖。
+
+          安装步骤：
+            1. 解压所需压缩包（见下文"分发包说明"）。
+            2. 将需要的 *.dll（可按需只装其中 1–4 个，或全部安装）放入
+               osu!lazer 用户目录下的 rulesets/ 文件夹：
+                 - Windows: %APPDATA%\osu\rulesets\
+                 - Linux:   ~/.local/share/osu/rulesets/
+                 - macOS:   ~/Library/Application Support/osu/rulesets/
+            3. 重新启动 osu!lazer，ruleset 会被自动扫描并加载。
+            4. 在游戏内选歌界面切换 ruleset 为对应 "AI Studio (osu!/mania/taiko/catch)"
+               即可在编辑器中使用 AI Studio 面板（Compose 右工具箱 / Setup 分区 / Verify 检查）。
+
+          分发包说明：
+            - osu.Game.Rulesets.AiStudio.Osu-<tag>.zip    — 仅 osu! 标准
+            - osu.Game.Rulesets.AiStudio.Mania-<tag>.zip  — 仅 mania
+            - osu.Game.Rulesets.AiStudio.Catch-<tag>.zip  — 仅 catch
+            - osu.Game.Rulesets.AiStudio.Taiko-<tag>.zip  — 仅 taiko
+            - osu.Game.Rulesets.AiStudio.Combined-<tag>.zip — 4 个 DLL + INSTALL.txt 合集
+
+          注意：请保持 dll 文件名不变（osu.Game.Rulesets.*.dll 前缀），
           否则 osu!lazer 的 RulesetStore 无法识别加载。
+          产出谱面为普通 per-mode .osu/.osz，原版 osu!lazer/stable 可直接游玩；
+          生成谱面默认标注 "AI generated"。
           EOF
+          # 替换版本占位
+          sed -i "s/\$TAG/${{ github.ref_name }}/g" INSTALL.txt
+          cat INSTALL.txt
 
-      # 先 cd 进输出目录再打包，保证 zip 内只有 dll + INSTALL.txt 两个文件
-      - name: Package ruleset zip
+      - name: Package 4 per-mode zips + combined zip
         shell: bash
         run: |
-          mkdir -p bin/Release/net8.0
-          cp src/osu.Game.Rulesets.AiStudio.Osu/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Osu.dll bin/Release/net8.0/
-          cp INSTALL.txt bin/Release/net8.0/
-          cd bin/Release/net8.0
-          zip -9 "$GITHUB_WORKSPACE/osu.Game.Rulesets.AiStudio.Osu-${{ github.ref_name }}.zip" osu.Game.Rulesets.AiStudio.Osu.dll INSTALL.txt
+          set -e
+          OUT="bin/Release/net8.0"
+          mkdir -p "$OUT"
+          cp src/osu.Game.Rulesets.AiStudio.Osu/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Osu.dll "$OUT/"
+          cp src/osu.Game.Rulesets.AiStudio.Mania/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Mania.dll "$OUT/"
+          cp src/osu.Game.Rulesets.AiStudio.Catch/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Catch.dll "$OUT/"
+          cp src/osu.Game.Rulesets.AiStudio.Taiko/bin/Release/net8.0/osu.Game.Rulesets.AiStudio.Taiko.dll "$OUT/"
+          cp INSTALL.txt "$OUT/"
+
+          TAG="${{ github.ref_name }}"
+
+          # 每模式独立 zip（便于按需安装）
+          (cd "$OUT" && zip -9 "$GITHUB_WORKSPACE/osu.Game.Rulesets.AiStudio.Osu-${TAG}.zip" osu.Game.Rulesets.AiStudio.Osu.dll INSTALL.txt)
+          (cd "$OUT" && zip -9 "$GITHUB_WORKSPACE/osu.Game.Rulesets.AiStudio.Mania-${TAG}.zip" osu.Game.Rulesets.AiStudio.Mania.dll INSTALL.txt)
+          (cd "$OUT" && zip -9 "$GITHUB_WORKSPACE/osu.Game.Rulesets.AiStudio.Catch-${TAG}.zip" osu.Game.Rulesets.AiStudio.Catch.dll INSTALL.txt)
+          (cd "$OUT" && zip -9 "$GITHUB_WORKSPACE/osu.Game.Rulesets.AiStudio.Taiko-${TAG}.zip" osu.Game.Rulesets.AiStudio.Taiko.dll INSTALL.txt)
+
+          # 合集 zip：4 个 DLL + INSTALL.txt
+          (cd "$OUT" && zip -9 "$GITHUB_WORKSPACE/osu.Game.Rulesets.AiStudio.Combined-${TAG}.zip" osu.Game.Rulesets.AiStudio.Osu.dll osu.Game.Rulesets.AiStudio.Mania.dll osu.Game.Rulesets.AiStudio.Catch.dll osu.Game.Rulesets.AiStudio.Taiko.dll INSTALL.txt)
+
+          echo "=== Zips created ==="
+          ls -lh "$GITHUB_WORKSPACE"/*.zip
+          echo "=== Combined zip contents ==="
+          unzip -l "$GITHUB_WORKSPACE/osu.Game.Rulesets.AiStudio.Combined-${TAG}.zip"
 
       - name: Generate changelog (tag name + date)
         run: |
@@ -64,6 +116,11 @@ jobs:
             echo "发布日期：$(date -u +%Y-%m-%d)"
             echo ""
             echo "由 tag ${{ github.ref_name }} 触发的自动构建版本。"
+            echo ""
+            echo "### 包含内容"
+            echo "- 4 个独立 ruleset DLL（osu!/mania/taiko/catch），共享 AiStudio.Core 源码编译并入"
+            echo "- INSTALL.txt（四模式安装说明）"
+            echo "- 5 个分发包：4 个 per-mode zip + 1 个 combined 合集 zip"
           } > CHANGELOG.md
 
       - name: Publish draft release
@@ -71,6 +128,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: osu.Game.Rulesets.AiStudio.Osu-${{ github.ref_name }}.zip
+          files: |
+            osu.Game.Rulesets.AiStudio.Osu-${{ github.ref_name }}.zip
+            osu.Game.Rulesets.AiStudio.Mania-${{ github.ref_name }}.zip
+            osu.Game.Rulesets.AiStudio.Catch-${{ github.ref_name }}.zip
+            osu.Game.Rulesets.AiStudio.Taiko-${{ github.ref_name }}.zip
+            osu.Game.Rulesets.AiStudio.Combined-${{ github.ref_name }}.zip
           draft: true
           body_path: CHANGELOG.md
