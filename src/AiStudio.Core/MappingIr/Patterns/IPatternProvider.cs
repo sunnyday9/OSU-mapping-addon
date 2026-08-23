@@ -20,9 +20,9 @@ public sealed record PatternGenerationContext(
     DifficultyProfile DifficultyProfile,
     int Seed = 0)
 {
-    /// <summary>派生随机数：每个 family 独立 seed（ADR-MVP-A-003）。</summary>
+    /// <summary>派生随机数：每个 family 独立 seed（ADR-MVP-A-003），用 FNV-1a 稳定哈希保证跨进程可复现（ADR-MVP-A-008）。</summary>
     public Random CreateFamilyRandom(string family)
-        => new(Seed ^ unchecked(family.GetHashCode()));
+        => new(DeterministicHash.DeriveSeed(family, Seed));
 }
 
 public sealed record PatternGenerationResult(

@@ -23,19 +23,21 @@ public sealed class Mania4KPatternProvider : IPatternProvider
             return new PatternGenerationResult(Array.Empty<ConcreteObject>(), new[] { new PatternIssue("ruleset_mismatch", "error", $"Provider is Mania but intent targets {intent.Ruleset}.") });
 
         var rng = context.CreateFamilyRandom(intent.Family);
-        var rhythm = new RhythmTimeline(intent, context.Music);
+        var parameters = ManiaPatternParameters.FromDictionary(intent.Parameters, context.Music.Tempo.BaseBpm > 0 ? context.Music.Tempo.BaseBpm : 180.0);
+        bool isLnFamily = intent.Family is "single_ln" or "ln_rice" or "ln_release";
+        var rhythm = new RhythmTimeline(parameters, context.Music, isLnFamily);
 
         IReadOnlyList<ConcreteObject> objects = intent.Family switch
         {
-            "single" => generateSingle(intent, rhythm, rng),
-            "stream" => generateStream(intent, rhythm, rng),
-            "burst" => generateBurst(intent, rhythm, rng),
-            "jack" => generateJack(intent, rhythm, rng),
-            "jump" => generateJump(intent, rhythm, rng),
-            "jumpstream" => generateJumpstream(intent, rhythm, rng),
-            "single_ln" => generateSingleLn(intent, rhythm, rng),
-            "ln_rice" => generateLnRice(intent, rhythm, rng),
-            "ln_release" => generateLnRelease(intent, rhythm, rng),
+            "single" => generateSingle(intent, parameters, rhythm, rng),
+            "stream" => generateStream(intent, parameters, rhythm, rng),
+            "burst" => generateBurst(intent, parameters, rhythm, rng),
+            "jack" => generateJack(intent, parameters, rhythm, rng),
+            "jump" => generateJump(intent, parameters, rhythm, rng),
+            "jumpstream" => generateJumpstream(intent, parameters, rhythm, rng),
+            "single_ln" => generateSingleLn(intent, parameters, rhythm, rng),
+            "ln_rice" => generateLnRice(intent, parameters, rhythm, rng),
+            "ln_release" => generateLnRelease(intent, parameters, rhythm, rng),
             _ => Array.Empty<ConcreteObject>(),
         };
 
@@ -60,19 +62,16 @@ public sealed class Mania4KPatternProvider : IPatternProvider
 
         public double BeatMs { get; }
 
-        public RhythmTimeline(PatternIntent intent, MusicTimeline music)
+        public RhythmTimeline(ManiaPatternParameters parameters, MusicTimeline music, bool isLnFamily)
         {
-            double bpm = intent.Parameters.TryGetValue("bpm", out var v) && v is not null
-                ? Convert.ToDouble(v)
-                : music.Tempo.BaseBpm;
+            double bpm = parameters.Bpm > 0 ? parameters.Bpm : music.Tempo.BaseBpm;
             if (bpm <= 0)
                 bpm = 180.0;
 
             BeatMs = 60000.0 / bpm;
             beatMs = BeatMs;
 
-            string sub = intent.Parameters.TryGetValue("subdivision", out var sv) ? Convert.ToString(sv) ?? "1/8" : "1/8";
-            subdivision = sub switch
+            subdivision = parameters.Subdivision switch
             {
                 "1/1" => 1,
                 "1/2" => 2,
@@ -86,7 +85,6 @@ public sealed class Mania4KPatternProvider : IPatternProvider
 
             // LN family：每步至少跨 1 拍（subdivision 份），保证同列 LN 不相交。
             // 例：1/8 细分 + LN → 每 8 个 1/8 拍放一个对象（步长 = 1 拍）。
-            bool isLnFamily = intent.Family is "single_ln" or "ln_rice" or "ln_release";
             step = isLnFamily ? subdivision : 1;
         }
 
@@ -98,56 +96,16 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         }
     }
 
-    // ---- parameter helpers ------------------------------------------------
-
-    private static int[] columnOrder(PatternIntent intent)
-    {
-        if (intent.Parameters.TryGetValue("column_order", out var value) && value is object[] arr && arr.Length > 0)
-            return arr.Select(Convert.ToInt32).ToArray();
-        return new[] { 0, 2, 1, 3 };
-    }
-
-    private static int? jackColumn(PatternIntent intent)
-    {
-        if (intent.Parameters.TryGetValue("jack_column", out var value) && value is not null)
-            return Convert.ToInt32(value);
-        return null;
-    }
-
-    private static int chordSize(PatternIntent intent)
-    {
-        if (intent.Parameters.TryGetValue("chord_size", out var v) && v is not null)
-            return Math.Clamp(Convert.ToInt32(v), 1, KeyCount);
-        return 2;
-    }
-
-    private static double chordDensity(PatternIntent intent)
-        => intent.Parameters.TryGetValue("chord_density", out var v) && v is not null
-            ? Math.Clamp(Convert.ToDouble(v), 0.0, 1.0)
-            : 0.25;
-
-    private static double lnDurationMs(PatternIntent intent, RhythmTimeline rhythm)
-    {
-        if (intent.Parameters.TryGetValue("ln_duration_beats", out var v) && v is not null)
-            return Math.Max(Convert.ToDouble(v), 0.25) * rhythm.BeatMs;
-        return rhythm.BeatMs;
-    }
-
-    private static double lnRatio(PatternIntent intent)
-        => intent.Parameters.TryGetValue("ln_ratio", out var v) && v is not null
-            ? Math.Clamp(Convert.ToDouble(v), 0.0, 1.0)
-            : 0.3;
-
     // ---- generators -----------------------------------------------------
 
-    private static List<ConcreteObject> generateSingle(PatternIntent intent, RhythmTimeline rhythm, Random rng)
+    private static List<ConcreteObject> generateSingle(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        var order = columnOrder(intent);
+        var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
         {
-            int col = order[i % order.Length];
+            int col = order[i % order.Count];
             result.Add(new ConcreteObject($"n{result.Count + 1}", "hit", rhythm.Time(intent, i), Column: col, SourcePatternId: intent.Id));
             i++;
         }
@@ -155,31 +113,27 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         return result;
     }
 
-    private static List<ConcreteObject> generateStream(PatternIntent intent, RhythmTimeline rhythm, Random rng)
-        => generateSingle(intent, rhythm, rng);
+    private static List<ConcreteObject> generateStream(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
+        => generateSingle(intent, parameters, rhythm, rng);
 
-    private static List<ConcreteObject> generateBurst(PatternIntent intent, RhythmTimeline rhythm, Random rng)
+    private static List<ConcreteObject> generateBurst(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        int count = intent.Parameters.TryGetValue("count", out var v) && v is not null
-            ? Math.Clamp(Convert.ToInt32(v), 2, 12)
-            : 4;
-        var order = columnOrder(intent);
+        int count = Math.Clamp(parameters.Count, 2, 12);
+        var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
         for (int i = 0; i < count; i++)
         {
-            int col = order[i % order.Length];
+            int col = order[i % order.Count];
             result.Add(new ConcreteObject($"n{result.Count + 1}", "hit", rhythm.Time(intent, i), Column: col, SourcePatternId: intent.Id));
         }
 
         return result;
     }
 
-    private static List<ConcreteObject> generateJack(PatternIntent intent, RhythmTimeline rhythm, Random rng)
+    private static List<ConcreteObject> generateJack(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        int count = intent.Parameters.TryGetValue("count", out var v) && v is not null
-            ? Math.Clamp(Convert.ToInt32(v), 2, 12)
-            : 4;
-        int col = jackColumn(intent) ?? 0;
+        int count = Math.Clamp(parameters.Count, 2, 12);
+        int col = parameters.JackColumn ?? 0;
         var result = new List<ConcreteObject>();
         for (int i = 0; i < count; i++)
         {
@@ -189,10 +143,10 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         return result;
     }
 
-    private static List<ConcreteObject> generateJump(PatternIntent intent, RhythmTimeline rhythm, Random rng)
+    private static List<ConcreteObject> generateJump(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        int size = chordSize(intent);
-        var order = columnOrder(intent);
+        int size = Math.Clamp(parameters.ChordSize, 1, KeyCount);
+        var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
@@ -205,11 +159,11 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         return result;
     }
 
-    private static List<ConcreteObject> generateJumpstream(PatternIntent intent, RhythmTimeline rhythm, Random rng)
+    private static List<ConcreteObject> generateJumpstream(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        double density = chordDensity(intent);
-        int size = chordSize(intent);
-        var order = columnOrder(intent);
+        double density = parameters.ChordDensity;
+        int size = Math.Clamp(parameters.ChordSize, 1, KeyCount);
+        var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
@@ -222,7 +176,7 @@ public sealed class Mania4KPatternProvider : IPatternProvider
             }
             else
             {
-                int col = order[i % order.Length];
+                int col = order[i % order.Count];
                 result.Add(new ConcreteObject($"n{result.Count + 1}", "hit", rhythm.Time(intent, i), Column: col, SourcePatternId: intent.Id));
             }
 
@@ -232,15 +186,15 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         return result;
     }
 
-    private static List<ConcreteObject> generateSingleLn(PatternIntent intent, RhythmTimeline rhythm, Random rng)
+    private static List<ConcreteObject> generateSingleLn(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        double durationMs = lnDurationMs(intent, rhythm);
-        var order = columnOrder(intent);
+        double durationMs = Math.Max(parameters.LnDurationBeats, 0.25) * rhythm.BeatMs;
+        var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
         {
-            int col = order[i % order.Length];
+            int col = order[i % order.Count];
             int t = rhythm.Time(intent, i);
             result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: t + (int)Math.Round(durationMs), Column: col, SourcePatternId: intent.Id));
             i++;
@@ -249,11 +203,11 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         return result;
     }
 
-    private static List<ConcreteObject> generateLnRice(PatternIntent intent, RhythmTimeline rhythm, Random rng)
+    private static List<ConcreteObject> generateLnRice(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        double durationMs = lnDurationMs(intent, rhythm);
-        double ratio = lnRatio(intent);
-        var order = columnOrder(intent);
+        double durationMs = Math.Max(parameters.LnDurationBeats, 0.25) * rhythm.BeatMs;
+        double ratio = parameters.LnRatio;
+        var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
@@ -262,12 +216,12 @@ public sealed class Mania4KPatternProvider : IPatternProvider
             int t = rhythm.Time(intent, i);
             if (isLn)
             {
-                int col = order[i % order.Length];
+                int col = order[i % order.Count];
                 result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: t + (int)Math.Round(durationMs), Column: col, SourcePatternId: intent.Id));
             }
             else
             {
-                int col = order[(i + 1) % order.Length];
+                int col = order[(i + 1) % order.Count];
                 result.Add(new ConcreteObject($"n{result.Count + 1}", "hit", t, Column: col, SourcePatternId: intent.Id));
             }
 
@@ -277,15 +231,15 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         return result;
     }
 
-    private static List<ConcreteObject> generateLnRelease(PatternIntent intent, RhythmTimeline rhythm, Random rng)
+    private static List<ConcreteObject> generateLnRelease(PatternIntent intent, ManiaPatternParameters parameters, RhythmTimeline rhythm, Random rng)
     {
-        double durationMs = lnDurationMs(intent, rhythm);
-        var order = columnOrder(intent);
+        double durationMs = Math.Max(parameters.LnDurationBeats, 0.25) * rhythm.BeatMs;
+        var order = parameters.ColumnOrder;
         var result = new List<ConcreteObject>();
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
         {
-            int col = order[i % order.Length];
+            int col = order[i % order.Count];
             // release pattern: LN 结束时间精确落在后续节奏点上（不静默移动）。
             int t = rhythm.Time(intent, i);
             result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: t + (int)Math.Round(durationMs), Column: col, SourcePatternId: intent.Id));
@@ -297,7 +251,7 @@ public sealed class Mania4KPatternProvider : IPatternProvider
 
     // ---- column helpers -------------------------------------------------
 
-    private static int[] pickChord(int[] order, int size, int index, Random rng)
+    private static int[] pickChord(IReadOnlyList<int> order, int size, int index, Random rng)
     {
         size = Math.Clamp(size, 2, KeyCount);
         if (size >= KeyCount)
@@ -307,7 +261,7 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         int start = (index + rng.Next(KeyCount - size + 1)) % (KeyCount - size + 1);
         var cols = new List<int>();
         for (int k = 0; k < size; k++)
-            cols.Add(order[(start + k) % order.Length]);
+            cols.Add(order[(start + k) % order.Count]);
         return cols.Distinct().ToArray();
     }
 }

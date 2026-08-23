@@ -22,4 +22,8 @@
     <ProjectReference Include="..\..\src\AiStudio.Core\AiStudio.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\src\AiStudio.Core\MappingIr\Schema\mapping-ir-v0.1.schema.json" Link="MappingIr/Schema/mapping-ir-v0.1.schema.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
