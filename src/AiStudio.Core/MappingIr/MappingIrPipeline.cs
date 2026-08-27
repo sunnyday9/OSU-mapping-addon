@@ -98,7 +98,7 @@ public sealed class MappingIrPipeline
             difficultyProfile);
         document = document with { MusicTimeline = timeline };
 
-        // 4. 证据 → 全局计划 → 逐段本地规划 + 候选 + 排名 + 生成（含 revision loop）
+        // 4. 证据 → 全局计划 → 逐段本地规划 + 候选 + 排名 + 生成（critic 驱动的有界 revision）
         var evidence = evidenceBuilder.Build(timeline, difficultyProfile);
         var globalPlan = globalPlanner.Plan(timeline, evidence, difficultyProfile, document.Ruleset);
 
@@ -125,7 +125,7 @@ public sealed class MappingIrPipeline
             var intent = localPlanner.Plan(context);
             intents.Add(intent);
 
-            // 候选生成 + 排名（有界 revision：critic 软问题 → 重排候选）
+            // 候选生成 + 排名 + 生成（有界 revision：critic 软问题 → 用下一候选重试）
             var best = selectBestCandidate(intent, difficultyProfile, seed, document, timeline, generated, counter, out int consumedObjects);
             patterns.Add(best);
             counter += consumedObjects;
@@ -180,49 +180,62 @@ public sealed class MappingIrPipeline
 
     // ---- internals -------------------------------------------------------
 
+    /// <summary>
+    /// 选择候选并生成（spec §19.1 有界 revision）：
+    /// 按排名依次尝试候选；每候选生成后跑 critic——软问题（warning）→ 下一候选（revision 尝试），
+    /// 硬问题（error）→ 拒绝该候选。预算耗尽时回退最简 single pattern（宁可出草稿，
+    /// 也不产出带硬错误对象的文档）。
+    /// </summary>
     private PatternIntent selectBestCandidate(MappingIntent intent, DifficultyProfile profile, int seed, MappingDocument document, MusicTimeline timeline, List<ConcreteObject> generated, int counter, out int consumedObjects)
     {
         consumedObjects = 0;
-        var candidates = candidateGenerator.Generate(intent, profile, backend.Ruleset, seed, timeline.Tempo.BaseBpm);
-        var ranked = candidateRanker.Rank(candidates, intent, profile);
 
+        // 逐 attempt 重新生成候选（同 seed 下确定；attempt 只改变派生随机序列，不改变 family 组合）。
+        var attempts = Enumerable.Range(0, Math.Max(1, MaxRevisionsPerPhrase))
+            .Select(a => candidateGenerator.Generate(intent, profile, backend.Ruleset, seed + a, timeline.Tempo.BaseBpm))
+            .ToList();
+        var ranked = attempts.SelectMany(cs => candidateRanker.Rank(cs, intent, profile)).ToList();
         if (ranked.Count == 0)
-        {
-            // 无有效候选：回退一个最简 single pattern
-            var fallback = fallbackSingle(intent, timeline.Tempo.BaseBpm);
-            var ctx = new PatternGenerationContext(timeline, document, generated, profile, seed);
-            var result = backend.Provider.Generate(fallback, ctx);
-            consumedObjects = appendObjects(result.Objects, generated, counter);
-            return fallback;
-        }
+            return fallback(intent, timeline, document, generated, profile, seed, counter, out consumedObjects);
 
-        // 按排名尝试候选（有界 revision）；无硬问题即接受
-        int attempt = 0;
-        while (attempt < ranked.Count && attempt < MaxRevisionsPerPhrase)
+        // 有界 revision：最多尝试 MaxRevisionsPerPhrase 个不同候选。
+        for (int attempt = 0; attempt < ranked.Count && attempt < MaxRevisionsPerPhrase; attempt++)
         {
             var rankedCandidate = ranked[attempt];
             var ctx = new PatternGenerationContext(timeline, document, generated, profile, seed + attempt);
             var result = backend.Provider.Generate(rankedCandidate.Candidate.Intent, ctx);
-            if (result.Objects.Count > 0)
-            {
-                // 局部快速校验：候选本身无 error 级问题即接受
-                bool hasHardIssue = result.Issues.Any(i => i.Severity == "error");
-                if (!hasHardIssue)
-                {
-                    consumedObjects = appendObjects(result.Objects, generated, counter);
-                    return rankedCandidate.Candidate.Intent;
-                }
-            }
+            if (result.Objects.Count == 0)
+                continue;
 
-            attempt++;
+            // 用 critic 门控：硬问题（error）→ 拒绝该候选；软问题（warning）→ 尝试下一候选。
+            var candidateDoc = document with
+            {
+                MappingPlan = new MappingPlan(
+                    new[] { intent },
+                    new[] { rankedCandidate.Candidate.Intent },
+                    Array.Empty<PatternTransition>()),
+                ConcreteObjects = generated.Concat(result.Objects).ToList(),
+            };
+            var report = critic.Evaluate(candidateDoc);
+            if (!report.Valid)
+                continue; // 硬问题 → 拒绝
+
+            consumedObjects = appendObjects(result.Objects, generated, counter);
+            return rankedCandidate.Candidate.Intent;
         }
 
-        // 预算耗尽：接受最后一个尝试过的候选（宁可出草稿）
-        var last = ranked[Math.Min(attempt, ranked.Count - 1)].Candidate.Intent;
-        var lastCtx = new PatternGenerationContext(timeline, document, generated, profile, seed);
-        var lastResult = backend.Provider.Generate(last, lastCtx);
-        consumedObjects = appendObjects(lastResult.Objects, generated, counter);
-        return last;
+        // 预算耗尽：回退最简 single pattern（不产出带硬错误的对象）。
+        return fallback(intent, timeline, document, generated, profile, seed, counter, out consumedObjects);
+    }
+
+    private PatternIntent fallback(MappingIntent intent, MusicTimeline timeline, MappingDocument document, List<ConcreteObject> generated, DifficultyProfile profile, int seed, int counter, out int consumedObjects)
+    {
+        consumedObjects = 0;
+        var fallback = fallbackSingle(intent, timeline.Tempo.BaseBpm);
+        var ctx = new PatternGenerationContext(timeline, document, generated, profile, seed);
+        var result = backend.Provider.Generate(fallback, ctx);
+        consumedObjects = appendObjects(result.Objects, generated, counter);
+        return fallback;
     }
 
     /// <summary>把对象追加到生成列表，返回实际追加的数量（供外层 counter 精确推进，杜绝 ID 重复）。</summary>
@@ -272,14 +285,20 @@ public sealed class MappingIrPipeline
         int aligned = 0;
         foreach (var obj in objects)
         {
-            double t = obj.Time;
-            double nearest = Math.Round(t / gridMs) * gridMs;
-            if (Math.Abs(t - nearest) < 2.0)
+            if (isOnGrid(obj.Time, gridMs))
                 aligned++;
         }
 
         return (double)aligned / objects.Count;
     }
+
+    /// <summary>
+    /// 对象时间是否落在节奏网格上（1/16 拍，容差 2ms）。
+    /// 与 <see cref="Critique.BaselineMappingCritic"/> 的 rhythm_alignment 判定共用同一谓词
+    /// （≥ 与 &lt; 边界对称，避免同一对象在 score 与 critic 间结论相反）。
+    /// </summary>
+    public static bool isOnGrid(double timeMs, double gridMs)
+        => gridMs > 0 && Math.Abs(timeMs - Math.Round(timeMs / gridMs) * gridMs) < 2.0;
 
     private static string hashAudio(string audioPath)
     {

@@ -119,12 +119,27 @@ MusicTimeline
 ## 6. 最终提交前检查清单
 
 - [x] `dotnet build`（Release）全绿、warnings-as-errors
-- [x] `dotnet test` 全绿（MappingIr **84/84**（既有 43 + 新增 41）；既有四模式 Osu 50 / Mania 18 / Taiko 58 / Catch 53 无回归）
+- [x] `dotnet test` 全绿（MappingIr **105/105**（既有 43 + 新增 62，含合入前 review 修复回归 9 项）；既有四模式 Osu 50 / Mania 18 / Taiko 58 / Catch 53 无回归）
 - [x] `dotnet format --verify-no-changes` 通过（Core/测试/demo）
 - [x] schema 校验测试通过（canonical schema 副本 + 键集合/枚举断言；demo 产物 jsonschema PASS）
 - [x] 端到端 demo 可运行（evidence → global → local → candidate/rank → backend → critic 全链路，valid=True alignment=1.0 deterministic=True）
-- [x] 决策记录 ADR-MVP-A-008~011 补齐（稳定哈希/强类型参数/canonical schema/决策链）
-- [ ] 文档同步（PLAN/architecture/verification/requirements 待更新）
+- [x] 决策记录 ADR-MVP-A-008~016 补齐（稳定哈希/强类型参数/canonical schema/决策链/全局计划/规划分解/backend 解耦/critic-revision/难度评估）
+- [x] 文档同步（PLAN/verification 已更新；architecture/requirements 的 Mapping IR 小节随 MVP-A 已记录）
+
+### 合入前 code-review 修复（2026-08-27，feat/mvp-a-mapping-ir 合入 main 前）
+
+| Review 发现 | 级别 | 修复 |
+|---|---|---|
+| `MappingValidator` 对反序列化文档 `Convert.ToInt32(JsonElement)` 抛 InvalidCastException（P0） | P0 | JsonElement 兼容读取（与 `ManiaPatternParameters` 同源），新增反序列化→validate 回归测试 |
+| `MusicTimelineBuilder` 单段 snap 后坍缩 → 空 timeline → 管线静默空图（P0） | P0 | 过滤零长段后补兜底段，新增单段/全坍缩测试 |
+| revision loop 非 critic 驱动：软问题不回馈、第三名候选恒不可达、预算耗尽可能接受硬错误对象（Spec §27-13） | P1 | 重写为 critic 门控的有界 revision；预算耗尽回退 single；对齐谓词与 critic 统一（`isOnGrid`） |
+| `IDifficultyEvaluator` 官方 adapter 未交付（Spec §16 / PLAN Task 10） | P1 | 接口 + Core 骨架已在 A.2 交付；官方 `ManiaDifficultyCalculator` adapter 依赖真实音频/working beatmap，随 MVP-B（SR 校准闭环）交付（ADR-016） |
+| ADR 012-016 缺失（PLAN §5 声明不一致） | P1 | 补齐 5 份决策记录 |
+
+### 合入前修复后的测试计数
+
+- MappingIr：**105/105**（新增 9 项 review 回归：反序列化→validate ×2、单段兜底 ×2、revision 有界/预算耗尽/软问题 ×3、对齐谓词对称/一致 ×2）
+- 既有四模式无回归（Osu 50 / Mania 18 / Taiko 58 / Catch 53）
 
 ## 7. 后续（非本次范围）
 

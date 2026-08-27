@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AiStudio.Core.MappingIr.Model;
 using AiStudio.Core.MappingIr.Patterns;
 
@@ -60,9 +61,27 @@ public sealed class MappingValidator : IMappingValidator
             return;
         }
 
-        int? keys = document.Ruleset.Variant.TryGetValue("keys", out var v) && v is not null ? Convert.ToInt32(v) : null;
+        int? keys = tryReadInt32(document.Ruleset.Variant, "keys");
         if (keys != 4)
             issues.Add(new PatternIssue("unsupported_keycount", "error", $"MVP A supports 4K mania; got {keys} keys."));
+    }
+
+    /// <summary>
+    /// 从 variant 字典读取 int（兼容 CLR 原始类型与 JSON 反序列化后的 <see cref="JsonElement"/>）。
+    /// 与 <see cref="ManiaPatternParameters"/> 的解析策略一致：反序列化文档直接校验时不抛 InvalidCastException。
+    /// </summary>
+    private static int? tryReadInt32(IReadOnlyDictionary<string, object?> dict, string key)
+    {
+        if (!dict.TryGetValue(key, out var v) || v is null)
+            return null;
+        return v switch
+        {
+            int i => i,
+            long l when l is >= int.MinValue and <= int.MaxValue => (int)l,
+            double d when d is >= int.MinValue and <= int.MaxValue => (int)d,
+            JsonElement e when e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out int i) => i,
+            _ => null,
+        };
     }
 
     private static void validateObjects(MappingDocument document, List<PatternIssue> issues)
@@ -76,7 +95,6 @@ public sealed class MappingValidator : IMappingValidator
 
         bool mania = document.Ruleset.Ruleset == RulesetKind.Mania;
         int maxColumn = 3;
-        var byColumn = new Dictionary<int, List<ConcreteObject>>();
 
         foreach (var obj in objects)
         {
@@ -99,24 +117,22 @@ public sealed class MappingValidator : IMappingValidator
         }
 
         // 同列重叠检查（mania：同列对象不能时间重叠；LN 允许嵌套——只检查 start 重叠）。
-        var ordered = objects.OrderBy(o => o.Time).ToList();
-        for (int i = 0; i < ordered.Count; i++)
+        // 与 BaselineMappingCritic 同源：按列分组后检查相邻对象，避免 O(n²) 双重循环。
+        if (mania)
         {
-            var a = ordered[i];
-            if (a.Column is null)
-                continue;
-            for (int j = i + 1; j < ordered.Count; j++)
+            var byColumn = objects.Where(o => o.Column is not null).GroupBy(o => o.Column!.Value);
+            foreach (var group in byColumn)
             {
-                var b = ordered[j];
-                if (b.Column != a.Column)
-                    continue;
-                if (b.Time >= (a.EndTime ?? a.Time))
-                    break; // 已按时间排序，后续对象更晚
-                // a 与 b 同列且 b 的 start 在 a 的区间内 → 重叠
-                if (b.Time < (a.EndTime ?? a.Time) && b.Time >= a.Time)
+                var ordered = group.OrderBy(o => o.Time).ToList();
+                for (int i = 1; i < ordered.Count; i++)
                 {
-                    issues.Add(new PatternIssue("column_overlap", "error", $"Objects '{a.Id}' and '{b.Id}' overlap in column {a.Column}."));
-                    break;
+                    var prev = ordered[i - 1];
+                    var cur = ordered[i];
+                    if (cur.Time < (prev.EndTime ?? prev.Time) && cur.Time >= prev.Time)
+                    {
+                        issues.Add(new PatternIssue("column_overlap", "error", $"Objects '{prev.Id}' and '{cur.Id}' overlap in column {prev.Column}."));
+                        break;
+                    }
                 }
             }
         }

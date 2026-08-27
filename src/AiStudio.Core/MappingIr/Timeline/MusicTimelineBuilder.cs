@@ -56,7 +56,13 @@ public sealed class MusicTimelineBuilder
         result[^1] = result[^1] with { EndTime = durationMs };
 
         // 过滤 snap 后坍缩为零长的段（相邻短段可能吸到同一 beat）——否则会产生重复 section ID。
-        return result.Where(s => s.EndTime > s.StartTime).ToList();
+        result = result.Where(s => s.EndTime > s.StartTime).ToList();
+
+        // 全部坍缩（如单段零长输入）→ 兜底一段覆盖整个时间线，避免空 timeline 导致管线静默产出空图。
+        if (result.Count == 0)
+            result.Add(new AudioSection(0, durationMs, 0.5));
+
+        return result;
     }
 
     private static double snapToBeat(double time, BeatGrid grid)

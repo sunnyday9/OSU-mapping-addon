@@ -80,11 +80,7 @@ public sealed class BaselineMappingCritic : IMappingCritic
         if (hasObjects && beatMs > 0)
         {
             double grid = beatMs / 16.0;
-            int offGrid = objects!.Count(o =>
-            {
-                double nearest = Math.Round(o.Time / grid) * grid;
-                return Math.Abs(o.Time - nearest) >= 2.0;
-            });
+            int offGrid = objects!.Count(o => !MappingIrPipeline.isOnGrid(o.Time, grid));
 
             if (offGrid > 0)
             {
