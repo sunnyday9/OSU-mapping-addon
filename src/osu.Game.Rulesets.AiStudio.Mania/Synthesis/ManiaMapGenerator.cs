@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using AiStudio.Core.Analysis;
+using AiStudio.Core.MappingIr.Calibration;
 using AiStudio.Core.Models;
 using AiStudio.Core.Synthesis;
 using osu.Game.Audio;
@@ -27,7 +28,6 @@ public sealed class ManiaMapGenerator : IMapGenerator
     private const double hold_gap_margin_ms = 14.0;
     private const double min_density_multiplier = 0.5;
     private const double max_density_multiplier = 2.0;
-    private const int max_calibration_iterations = 5;
 
     private readonly IAudioAnalyzer analyzer;
 
@@ -209,26 +209,19 @@ public sealed class ManiaMapGenerator : IMapGenerator
 
     private ManiaBeatmap calibrate(GenerationSettings settings, BeatGrid grid, IReadOnlyList<AudioSection> sections, int keyCount, double beatLength, CancellationToken cancellationToken)
     {
-        double multiplier = 1.0;
+        // 收敛数值搜索统一走 Core 的 DensityScaleSearch（唯一实现，架构走查候选 5）；
+        // 密度乘子的领域 clamp 范围保留在此。
         ManiaBeatmap? beatmap = null;
-
-        for (int i = 0; i < max_calibration_iterations; i++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            beatmap = buildBeatmap(settings, grid, sections, keyCount, multiplier);
-            double sr = calculateStarRating(beatmap);
-            double delta = settings.TargetStarRating - sr;
-
-            if (Math.Abs(delta) <= settings.StarRatingTolerance)
-                return beatmap;
-
-            double next = Math.Clamp(multiplier * (1 + delta / Math.Max(sr, 0.5)), min_density_multiplier, max_density_multiplier);
-            if (Math.Abs(next - multiplier) < 1e-3)
-                return beatmap;
-
-            multiplier = next;
-        }
+        var search = new DensityScaleSearch { MinScale = min_density_multiplier, MaxScale = max_density_multiplier };
+        search.Search(
+            settings.TargetStarRating,
+            settings.StarRatingTolerance,
+            scale =>
+            {
+                beatmap = buildBeatmap(settings, grid, sections, keyCount, scale);
+                return calculateStarRating(beatmap);
+            },
+            cancellationToken);
 
         return beatmap!;
     }
