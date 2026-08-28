@@ -25,7 +25,7 @@ public interface ILocalMappingPlanner
 }
 
 /// <summary>
-/// 确定性本地规划器：在既有 <see cref="DeterministicMappingPlanner"/> 的规则之上，
+/// 确定性本地规划器：规则型意图决策（primaryIntentFor/secondaryIntentsFor）之上，
 /// 引入证据与全局计划（climax 强度、密度预算）做 future-aware 意图决策。
 /// </summary>
 public sealed class DeterministicLocalPlanner : ILocalMappingPlanner

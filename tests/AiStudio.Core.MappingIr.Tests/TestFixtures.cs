@@ -1,10 +1,7 @@
 using AiStudio.Core.Analysis;
 using AiStudio.Core.MappingIr.Analysis;
 using AiStudio.Core.MappingIr.Model;
-using AiStudio.Core.MappingIr.Patterns;
-using AiStudio.Core.MappingIr.Planning;
 using AiStudio.Core.MappingIr.Timeline;
-using AiStudio.Core.MappingIr.Validation;
 using NUnit.Framework;
 
 namespace AiStudio.Core.MappingIr.Tests;
@@ -49,34 +46,19 @@ public static class TestFixtures
             new DifficultyPreferences(AllowExtremePatterns: false, PreferReadability: true, PreferMusicSync: true, PreferPatternVariety: true),
             0.15);
 
-    /// <summary>构造完整文档（时间线 + 规则规划 + 全部 pattern 生成 + 校验）。</summary>
+    /// <summary>构造完整文档（时间线 + 规划 + 全部 pattern 生成 + 校验 + Critic），走生产管线。</summary>
     public static MappingDocument BuildDocument(int seed = 42)
     {
-        var timeline = Timeline();
-        var profile = BalancedProfile();
-        var planner = new DeterministicMappingPlanner();
-        var plan = planner.Plan(timeline, profile, seed);
-
-        var document = MappingDocument.CreateEmpty(
-            $"mapir_test_{seed}",
-            new MapInfo("sha256:test", Title: "Test Song"),
-            new RulesetInfo(RulesetKind.Mania, new Dictionary<string, object?> { ["keys"] = 4 }),
-            profile);
-        document = document with { MusicTimeline = timeline, MappingPlan = plan };
-
-        var provider = new Mania4KPatternProvider();
-        var generated = new List<ConcreteObject>();
-        int counter = 1;
-        foreach (var intent in plan.Patterns)
+        // 管线的 hashAudio 需要真实文件：写占位音频（SyntheticAudioAnalyzer 返回构造时注入的合成数据）。
+        string audioPath = Path.Combine(Path.GetTempPath(), $"aistudio_fixture_{Guid.NewGuid():N}.mp3");
+        File.WriteAllText(audioPath, "fixture audio placeholder");
+        try
         {
-            var ctx = new PatternGenerationContext(timeline, document, generated, profile, seed);
-            foreach (var obj in provider.Generate(intent, ctx).Objects)
-                generated.Add(obj with { Id = $"obj_{counter++}" });
+            return new MappingIrPipeline(Analyzer()).Run(audioPath, BalancedProfile(), seed);
         }
-
-        document = document with { ConcreteObjects = generated };
-
-        var validation = new MappingValidator().Validate(document);
-        return document with { Evaluation = new Evaluation(validation.Valid, Difficulty: new Dictionary<string, object?>(), Issues: validation.Issues.Select(i => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?> { ["code"] = i.Code, ["severity"] = i.Severity, ["message"] = i.Message }).ToList()) };
+        finally
+        {
+            File.Delete(audioPath);
+        }
     }
 }
