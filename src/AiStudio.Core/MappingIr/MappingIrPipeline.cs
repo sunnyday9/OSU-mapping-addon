@@ -8,7 +8,6 @@ using AiStudio.Core.MappingIr.GlobalPlanning;
 using AiStudio.Core.MappingIr.LocalPlanning;
 using AiStudio.Core.MappingIr.Model;
 using AiStudio.Core.MappingIr.Patterns;
-using AiStudio.Core.MappingIr.Planning;
 using AiStudio.Core.MappingIr.Timeline;
 using AiStudio.Core.MappingIr.Validation;
 
@@ -35,10 +34,9 @@ public sealed class MappingIrPipeline
     private readonly IMappingCritic critic;
     private readonly IDifficultyEvaluator difficultyEvaluator;
 
-    /// <summary>兼容旧构造（MVP A 签名）：内部组装新决策链。</summary>
+    /// <summary>便捷构造：组装默认确定性决策链（证据 → 全局 → 本地 → 候选 → 排名 → 渲染）。</summary>
     public MappingIrPipeline(
         IAudioAnalyzer? analyzer = null,
-        IMappingPlanner? planner = null,
         IPatternProvider? provider = null,
         IMappingValidator? validator = null)
         : this(
