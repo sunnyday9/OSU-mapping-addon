@@ -9,6 +9,7 @@ using global::AiStudio.Core.MappingIr.Evidence;
 using global::AiStudio.Core.MappingIr.GlobalPlanning;
 using global::AiStudio.Core.MappingIr.LocalPlanning;
 using global::AiStudio.Core.MappingIr.Model;
+using global::AiStudio.Core.MappingIr.Rendering;
 
 namespace osu.Game.Rulesets.AiStudio.Mania.Synthesis;
 
@@ -54,6 +55,13 @@ public sealed class ManiaIrCalibratedPipeline
     /// </summary>
     public MappingDocument Run(string audioPath, DifficultyProfile difficultyProfile, int seed = 0, CancellationToken cancellationToken = default)
         => RunCalibrated(audioPath, difficultyProfile, seed, cancellationToken).Document;
+
+    /// <summary>
+    /// 渲染 MappingDocument 为完整 .osu 文本。与官方评估器（<see cref="ManiaOfficialDifficultyEvaluator"/>）
+    /// 使用同一渲染器，保证「报告 SR = 实测 SR」（CONTEXT.md 不变量）。
+    /// </summary>
+    public string RenderOsu(MappingDocument document)
+        => new ManiaOsuRenderer().Render(document);
 
     private MappingIrPipeline BuildPipeline(double densityScale)
         => new(
