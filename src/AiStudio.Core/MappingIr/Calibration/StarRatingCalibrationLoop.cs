@@ -11,15 +11,11 @@ public sealed record CalibrationResult(
     bool Converged);
 
 /// <summary>
-/// SR 校准闭环（MVP-B，spec §16 Difficulty Feedback Loop）：
+/// SR 校准闭环（MVP-B，spec §16 Difficulty Feedback Loop）的文档门面：
 /// 调节密度旋钮（DensityScale）重跑生成，直到实测 SR 落在目标 ± 容差内。
 /// 纯算法、零外部依赖、确定性——生成函数与评估器由调用方注入
-/// （ruleset 程序集提供"官方 ManiaDifficultyCalculator 评估 + 重跑管线"的闭包）。
-///
-/// 收敛公式沿用 <c>ManiaMapGenerator.calibrate</c>（M0-M6 已验证）：
-///   scale_{n+1} = clamp(scale_n × (1 + delta / max(sr, 0.5)), MinScale, MaxScale)
-/// 其中 delta = TargetStarRating − sr；|delta| ≤ Tolerance 即收敛；
-/// 停滞保护 |scale_{n+1} − scale_n| &lt; 1e-3 提前退出。
+/// （ruleset 程序集提供"官方难度计算器评估 + 重跑管线"的闭包）；
+/// 收敛数值搜索由 <see cref="DensityScaleSearch"/> 唯一实现（Mania/OsuMapGenerator 同源复用）。
 /// </summary>
 public sealed class StarRatingCalibrationLoop
 {
@@ -58,35 +54,25 @@ public sealed class StarRatingCalibrationLoop
             return new CalibrationResult(doc, readObservedSr(doc), 1.0, 0, Converged: false);
         }
 
-        double tolerance = Math.Max(profile.Tolerance, 0.01); // 容差下限防除零/无意义迭代
-        double scale = 1.0;
-        MappingDocument document = generate(scale);
-        double? sr = readObservedSr(document);
-
-        for (int i = 0; i < MaxIterations; i++)
+        MappingDocument document = null!;
+        var search = new DensityScaleSearch
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (sr is null)
+            MaxIterations = MaxIterations,
+            MinScale = MinScale,
+            MaxScale = MaxScale,
+            StagnationEpsilon = StagnationEpsilon,
+        };
+        var result = search.Search(
+            target.Value,
+            profile.Tolerance,
+            scale =>
             {
-                // 评估器不可用：保持 DifficultyKnown=false 语义，返回当前草稿。
-                return new CalibrationResult(document, null, scale, i + 1, Converged: false);
-            }
+                document = generate(scale);
+                return readObservedSr(document);
+            },
+            cancellationToken);
 
-            double delta = target.Value - sr.Value;
-            if (Math.Abs(delta) <= tolerance)
-                return new CalibrationResult(document, sr, scale, i + 1, Converged: true);
-
-            double next = Math.Clamp(scale * (1 + delta / Math.Max(sr.Value, 0.5)), MinScale, MaxScale);
-            if (Math.Abs(next - scale) < StagnationEpsilon)
-                return new CalibrationResult(document, sr, scale, i + 1, Converged: false);
-
-            scale = next;
-            document = generate(scale);
-            sr = readObservedSr(document);
-        }
-
-        return new CalibrationResult(document, sr, scale, MaxIterations, Converged: false);
+        return new CalibrationResult(document, result.ObservedSr, result.FinalScale, result.Iterations, result.Converged);
     }
 
     private static double? readObservedSr(MappingDocument document)

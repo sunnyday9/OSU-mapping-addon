@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using AiStudio.Core.Analysis;
+using AiStudio.Core.MappingIr.Calibration;
 using AiStudio.Core.Models;
 using AiStudio.Core.Synthesis;
 using osu.Game.Audio;
@@ -32,7 +33,6 @@ public sealed class OsuMapGenerator : IMapGenerator
     private const double slider_end_margin_ms = 14.0;
     private const double min_spacing_multiplier = 0.55;
     private const double max_spacing_multiplier = 1.8;
-    private const int max_calibration_iterations = 5;
     private const int combo_interval = 8;
     private const int whistle_interval = 4;
     private const string default_output_dir = "osu-ai-studio-output";
@@ -366,26 +366,19 @@ public sealed class OsuMapGenerator : IMapGenerator
 
     private Beatmap<OsuHitObject> calibrate(GenerationSettings settings, BeatGrid grid, IReadOnlyList<AudioSection> sections, double beatLength, CancellationToken cancellationToken)
     {
-        double multiplier = 1.0;
+        // 收敛数值搜索统一走 Core 的 DensityScaleSearch（唯一实现，架构走查候选 5）；
+        // 间距乘子的领域 clamp 范围保留在此。
         Beatmap<OsuHitObject>? beatmap = null;
-
-        for (int i = 0; i < max_calibration_iterations; i++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            beatmap = buildBeatmap(settings, grid, sections, beatLength, multiplier);
-            double sr = calculateStarRating(beatmap);
-            double delta = settings.TargetStarRating - sr;
-
-            if (Math.Abs(delta) <= settings.StarRatingTolerance)
-                return beatmap;
-
-            double next = Math.Clamp(multiplier * (1 + delta / Math.Max(sr, 0.5)), min_spacing_multiplier, max_spacing_multiplier);
-            if (Math.Abs(next - multiplier) < 1e-3)
-                return beatmap;
-
-            multiplier = next;
-        }
+        var search = new DensityScaleSearch { MinScale = min_spacing_multiplier, MaxScale = max_spacing_multiplier };
+        search.Search(
+            settings.TargetStarRating,
+            settings.StarRatingTolerance,
+            scale =>
+            {
+                beatmap = buildBeatmap(settings, grid, sections, beatLength, scale);
+                return calculateStarRating(beatmap);
+            },
+            cancellationToken);
 
         return beatmap!;
     }
