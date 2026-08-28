@@ -26,9 +26,14 @@ public interface IPatternCandidateGenerator
 /// <summary>
 /// 确定性候选生成器（spec §11）：按意图 primary + 难度密度选择 family 参数组合，
 /// 产出 3–5 个候选（含不同 subdivision / family / LN 变体），reason codes 标注选择理由。
+/// <see cref="DensityScale"/> 是 SR 校准旋钮（MVP-B）：缩放 subdivision 档位选择，
+/// 使对象密度（进而官方 SR）随 scale 单调变化（默认 1.0 保持既有行为）。
 /// </summary>
 public sealed class DeterministicCandidateGenerator : IPatternCandidateGenerator
 {
+    /// <summary>密度缩放系数（相对意图默认档全量的密度倍数，≈0.2–2.0）：1.0 = 既有行为。校准循环用它逼近目标 SR。</summary>
+    public double DensityScale { get; init; } = 1.0;
+
     public IReadOnlyList<PatternCandidate> Generate(MappingIntent intent, DifficultyProfile difficultyProfile, RulesetKind ruleset, int seed, double bpm = 180.0)
     {
         ArgumentNullException.ThrowIfNull(intent);
@@ -36,9 +41,30 @@ public sealed class DeterministicCandidateGenerator : IPatternCandidateGenerator
         if (ruleset != RulesetKind.Mania)
             return Array.Empty<PatternCandidate>();
 
-        double density = intent.Emphasis.Density;
-        var candidates = new List<PatternCandidate>();
+        // 密度旋钮（MVP-B SR 校准）：DensityScale = 相对"意图默认档全量"的目标密度倍数。
+        // 选满足 档位密度 ≥ 目标密度 的最低 subdivision 档，档内用 density 参数稀疏化——
+        // 使对象密度随 scale 全程连续单调（scale 0.5→默认档半量，1.0→默认档全量，
+        // 2.0→1/16 档全量，4.0→1/24 档全量）。
+        double baseDensity = intent.Emphasis.Density;
+        int baseLevel = baseDensity > 0.7 ? 2 : baseDensity > 0.5 ? 1 : 0; // 0=1/4 档, 1=1/8 档, 2=1/16 档
+        double[] levelDensity = { 0.25, 0.5, 1.0, 2.0 }; // 各档全量相对密度（1/4、1/8、1/16、1/24）
+        double target = Math.Clamp(DensityScale * levelDensity[baseLevel], 0.02, 4.0);
 
+        int level = baseLevel;
+        while (level < levelDensity.Length - 1 && levelDensity[level] < target)
+            level++;
+        while (level > 0 && levelDensity[level - 1] >= target)
+            level--;
+
+        string[] subdivisions = level switch
+        {
+            0 => new[] { "1/4", "1/4", "1/4", "1/4" },
+            2 => new[] { "1/16", "1/16", "1/16", "1/16" },
+            3 => new[] { "1/24", "1/24", "1/24", "1/24" },
+            _ => new[] { "1/8", "1/8", "1/8", "1/8" },
+        };
+        double densityParam = Math.Clamp(target / levelDensity[level], 0.05, 1.0);
+        var candidates = new List<PatternCandidate>();
         // 依据意图 primary 选择候选 family 组合（每个意图 4 个候选，满足 spec §11.1 的 3-5）
         string[] families = intent.Primary switch
         {
@@ -50,12 +76,6 @@ public sealed class DeterministicCandidateGenerator : IPatternCandidateGenerator
             _ => new[] { "single", "jump", "stream", "burst" },
         };
 
-        string[] subdivisions = density > 0.7
-            ? new[] { "1/16", "1/8", "1/16", "1/8" }
-            : density > 0.5
-                ? new[] { "1/8", "1/16", "1/8", "1/4" }
-                : new[] { "1/4", "1/8", "1/4", "1/8" };
-
         for (int i = 0; i < families.Length && candidates.Count < 4; i++)
         {
             string family = families[i];
@@ -65,7 +85,9 @@ public sealed class DeterministicCandidateGenerator : IPatternCandidateGenerator
             var parameters = new Dictionary<string, object?>
             {
                 ["subdivision"] = subdivisions[i],
-                ["density"] = Math.Round(density, 2),
+                // density = densityParam：provider 用它稀疏化节奏点（1.0=全量，<1 稀疏）。
+                // 这是 SR 校准的连续旋钮（MVP-B），与 subdivision 档位正交。
+                ["density"] = densityParam,
                 ["column_strategy"] = i % 2 == 0 ? "alternating" : "mirror",
                 ["column_order"] = i % 2 == 0 ? new object[] { 0, 2, 1, 3 } : new object[] { 0, 3, 1, 2 },
                 ["jack_tolerance"] = 0.05,
@@ -98,7 +120,7 @@ public sealed class DeterministicCandidateGenerator : IPatternCandidateGenerator
                 ExpectedDifficultyCost: Math.Round(0.3 + i * 0.15, 2),
                 MusicAlignmentPrior: Math.Round(0.7 + (families.Length - i) * 0.05, 2),
                 ContinuityPrior: 0.6,
-                new[] { $"intent.{snake(intent.Primary.ToString())}", $"density.{density:0.00}" }));
+                new[] { $"intent.{snake(intent.Primary.ToString())}", $"density.{densityParam:0.00}" }));
         }
 
         return candidates;

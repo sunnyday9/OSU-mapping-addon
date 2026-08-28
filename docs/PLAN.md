@@ -207,7 +207,7 @@ don/kat 序列合成：频谱带能量区分低频鼓点（don）与高频边击
 | 端到端管线 + CLI 演示 | `MappingIr/MappingIrPipeline.cs` + `tools/mapping-ir-demo/` | demo：3 段 → 1840 对象 → valid=True alignment=1.0 deterministic=True |
 | 测试 | `tests/AiStudio.Core.MappingIr.Tests/` | **43/43 通过**；既有四模式 179 用例无回归 |
 
-**后续路线**（详见 `docs/new plan/implementation/PLAN.md` §8）：MVP-B = Difficulty 校准闭环（官方 ManiaDifficultyCalculator 迭代 → 目标 SR ±0.3★）；MVP-C = LLM Mapping Planner 替换（`IMappingPlanner` 接口就绪）；MVP-D = Standard Pattern Provider + 2D 几何渲染；Copilot 三粒度建议。
+**后续路线**（详见 `docs/new plan/implementation/PLAN.md` §8）：**MVP-B（SR 校准闭环）已完成**（2026-08-28：官方 ManiaDifficultyCalculator + DensityScale 旋钮迭代，端到端 SR=5.61 ∈ 5.5±0.15，详见 `docs/new plan/implementation/PLAN-MVP-B.md`）；MVP-C = LLM Mapping Planner 替换（`IMappingPlanner` 接口就绪）；MVP-D = Standard Pattern Provider + 2D 几何渲染；Copilot 三粒度建议。
 
 ---
 
