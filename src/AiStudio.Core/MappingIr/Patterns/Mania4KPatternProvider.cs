@@ -53,12 +53,16 @@ public sealed class Mania4KPatternProvider : IPatternProvider
     /// <summary>
     /// 基于 beat 网格的节奏时间轴：subdivision 决定每拍细分份数，
     /// 时间 = beatStart + (subIndex / subdivision) × beatMs，消除跨拍累积误差。
+    /// <see cref="densityRatio"/>（0–1] 稀疏化节奏点：ratio 1.0 全量，0.5 隔点取一——
+    /// 这是 SR 校准（MVP-B）的连续密度旋钮：floor((i+1)r) > floor(ir) 的确定性均匀采样
+    /// 使对象数随 ratio 连续单调（无平台区），且完全确定性。
     /// </summary>
     private sealed class RhythmTimeline
     {
         private readonly double beatMs;
         private readonly int subdivision;
         private readonly int step; // 每步的细分份数（LN family 用大步长避免同列重叠）
+        private readonly double densityRatio; // (0,1]：保留的节奏点比例
 
         public double BeatMs { get; }
 
@@ -86,6 +90,8 @@ public sealed class Mania4KPatternProvider : IPatternProvider
             // LN family：每步至少跨 1 拍（subdivision 份），保证同列 LN 不相交。
             // 例：1/8 细分 + LN → 每 8 个 1/8 拍放一个对象（步长 = 1 拍）。
             step = isLnFamily ? subdivision : 1;
+
+            densityRatio = Math.Clamp(parameters.Density > 0 ? parameters.Density : 1.0, 0.05, 1.0);
         }
 
         /// <summary>从 start 起第 i 个节奏点（对齐 beat 网格：先归位到最近 beat 起点）。</summary>
@@ -94,6 +100,12 @@ public sealed class Mania4KPatternProvider : IPatternProvider
             double alignedStart = Math.Round(intent.StartTime / beatMs) * beatMs;
             return (int)Math.Round(alignedStart + (double)i * step * beatMs / subdivision);
         }
+
+        /// <summary>是否保留第 i 个节奏点（densityRatio 稀疏化，确定性：i 是整数索引）。</summary>
+        public bool Keep(int i)
+            // floor((i+1)×ratio) > floor(i×ratio)：精确 ratio 比例的确定性均匀采样。
+            // 无 rng、无浮点累积误差（每步独立计算），ratio 单调 → 保留数单调。
+            => Math.Floor((i + 1) * densityRatio) > Math.Floor(i * densityRatio);
     }
 
     // ---- generators -----------------------------------------------------
@@ -105,6 +117,12 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
         {
+            if (!rhythm.Keep(i))
+            {
+                i++;
+                continue;
+            }
+
             int col = order[i % order.Count];
             result.Add(new ConcreteObject($"n{result.Count + 1}", "hit", rhythm.Time(intent, i), Column: col, SourcePatternId: intent.Id));
             i++;
@@ -151,6 +169,12 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
         {
+            if (!rhythm.Keep(i))
+            {
+                i++;
+                continue;
+            }
+
             foreach (int col in pickChord(order, size, i, rng))
                 result.Add(new ConcreteObject($"n{result.Count + 1}", "hit", rhythm.Time(intent, i), Column: col, SourcePatternId: intent.Id));
             i++;
@@ -168,6 +192,12 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
         {
+            if (!rhythm.Keep(i))
+            {
+                i++;
+                continue;
+            }
+
             bool chord = rng.NextDouble() < density;
             if (chord)
             {
@@ -194,6 +224,12 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
         {
+            if (!rhythm.Keep(i))
+            {
+                i++;
+                continue;
+            }
+
             int col = order[i % order.Count];
             int t = rhythm.Time(intent, i);
             result.Add(new ConcreteObject($"n{result.Count + 1}", "hold", t, EndTime: Math.Min(t + (int)Math.Round(durationMs), intent.EndTime), Column: col, SourcePatternId: intent.Id));
@@ -212,6 +248,12 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
         {
+            if (!rhythm.Keep(i))
+            {
+                i++;
+                continue;
+            }
+
             bool isLn = rng.NextDouble() < ratio;
             int t = rhythm.Time(intent, i);
             if (isLn)
@@ -239,6 +281,12 @@ public sealed class Mania4KPatternProvider : IPatternProvider
         int i = 0;
         while (rhythm.Time(intent, i) <= intent.EndTime)
         {
+            if (!rhythm.Keep(i))
+            {
+                i++;
+                continue;
+            }
+
             int col = order[i % order.Count];
             // release pattern: LN 结束时间精确落在后续节奏点上（不静默移动）。
             int t = rhythm.Time(intent, i);

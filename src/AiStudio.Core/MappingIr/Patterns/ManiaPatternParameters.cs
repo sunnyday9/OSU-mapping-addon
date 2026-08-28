@@ -27,7 +27,7 @@ public sealed record ManiaPatternParameters(
     public static ManiaPatternParameters Defaults(double bpm)
         => new(
             DefaultSubdivision,
-            0.5,
+            1.0, // density 默认 1.0 = 全量节奏点（SR 校准旋钮，MVP-B）；<1 才稀疏化
             "alternating",
             new[] { 0, 2, 1, 3 },
             0.05,
@@ -42,11 +42,13 @@ public sealed record ManiaPatternParameters(
     /// <summary>
     /// 从 PatternIntent.Parameters 字典解析（兼容 CLR 原始类型与 JsonElement）。
     /// 缺失/无法解析的字段回退默认值；不抛异常（宽松解析，validator 另行把关）。
+    /// <c>density</c> 默认 1.0（全量节奏点）——它是 SR 校准旋钮（MVP-B），
+    /// 显式传入 &lt;1 的值才启用稀疏化，保持既有 pattern 行为不变。
     /// </summary>
     public static ManiaPatternParameters FromDictionary(IReadOnlyDictionary<string, object?> dict, double fallbackBpm)
     {
         string subdivision = str(dict, "subdivision") ?? DefaultSubdivision;
-        double density = dbl(dict, "density") ?? 0.5;
+        double density = dbl(dict, "density") ?? 1.0;
         string columnStrategy = str(dict, "column_strategy") ?? "alternating";
         IReadOnlyList<int> columnOrder = intList(dict, "column_order") ?? new[] { 0, 2, 1, 3 };
         double jackTolerance = dbl(dict, "jack_tolerance") ?? 0.05;

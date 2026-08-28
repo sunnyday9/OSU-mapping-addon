@@ -121,7 +121,7 @@ public class ManiaPatternParametersTests
         var parsed = ManiaPatternParameters.FromDictionary(new Dictionary<string, object?>(), 174.0);
 
         Assert.That(parsed.Subdivision, Is.EqualTo(ManiaPatternParameters.DefaultSubdivision));
-        Assert.That(parsed.Density, Is.EqualTo(0.5));
+        Assert.That(parsed.Density, Is.EqualTo(1.0), "density defaults to 1.0 = full rhythm points (SR calibration knob, MVP-B)");
         Assert.That(parsed.ColumnOrder, Is.EqualTo(new[] { 0, 2, 1, 3 }));
         Assert.That(parsed.Bpm, Is.EqualTo(174.0));
         Assert.That(parsed.JackColumn, Is.Null);

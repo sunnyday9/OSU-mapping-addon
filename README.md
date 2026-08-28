@@ -56,5 +56,6 @@ docs/new plan/                        AI Mapper 新计划 + implementation（实
 | M3 生成 v2 | ✅ 完成 | 多难度预设/spread、段落/kiai/break、.osz 导出、IDistributionProvider 语料分布 |
 | M4–M6 | ✅ 完成 | mania / catch / taiko 独立插件（各有检查集与合成器） |
 | **MVP A Mapping IR** | ✅ 完成 | Mapping IR v0.1 核心层：语义 IR + 确定性 Mania 4K 生成 + 校验 + .osu 渲染 + 端到端 CLI；JSON Schema 校验 PASS、43/43 测试、零新依赖 |
+| **MVP B SR 校准** | ✅ 完成 | 官方 ManiaDifficultyCalculator 校准闭环：DensityScale 旋钮迭代 → 目标 SR ±0.15★（实测 5.61 ∈ 5.5±0.15）；`IDifficultyEvaluator` adapter + `ManiaIrCalibratedPipeline`；112 Core + 25 Mania 测试 |
 
-详见 `docs/PLAN.md`（§8.1 AI Mapper 路线）、`docs/verification.md`（§7 MVP A 验收）与 `docs/new plan/implementation/`（实施计划 + ADR-MVP-A-001~007）。
+详见 `docs/PLAN.md`（§8.1 AI Mapper 路线）、`docs/verification.md`（§7 MVP A 验收）与 `docs/new plan/implementation/`（实施计划 + ADR-MVP-A-001~016 + ADR-MVP-B-001~002）。
