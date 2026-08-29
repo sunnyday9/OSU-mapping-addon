@@ -9,7 +9,7 @@ using osu.Game.Graphics.UserInterface;
 namespace osu.Game.Rulesets.AiStudio.Mania.Edit;
 
 /// <summary>
-/// Setup tab "AI Studio (Mania)" section — similar to osu but for mania generation.
+/// Setup tab "AI Studio (Mania)" section — Mania generation via the calibrated Mapping IR pipeline (ADR-011).
 /// </summary>
 public partial class AiStudioManiaSetupSection : Container
 {
@@ -87,7 +87,7 @@ public partial class AiStudioManiaSetupSection : Container
         generateButton.Enabled.Value = false;
         statusText.Text = "Generating (mania)...";
 
-        Task.Run(() => new Synthesis.ManiaMapGenerator().GenerateAsync(settings))
+        Task.Run(() => new Synthesis.ManiaIrMapGenerator().GenerateAsync(settings))
             .ContinueWith((Task<GenerationResult> task) => Scheduler.Add(() => finalizeGeneration(task)));
     }
 
